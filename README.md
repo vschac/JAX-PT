@@ -1,4 +1,6 @@
-# FAST-PT
+# JAX-PT
+
+**Convert to a JAX REAdme**
 
 FAST-PT is a code to calculate quantities in cosmological perturbation theory
 at 1-loop (including, e.g., corrections to the matter power spectrum). The code

@@ -4,17 +4,17 @@ requires = ["setuptools", "wheel"]  # PEP 508 specifications.
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fast-pt"
+name = "jax-pt"
 dynamic = ["version"]
-requires-python = ">=3.5"
-description = "FAST-PT is a code to calculate quantities in cosmological perturbation theory at 1-loop (including, e.g., corrections to the matter power spectrum)."
+requires-python = ">=3.10"
+description = "JAX-PT is a rewrite of the FAST-PT algorithm to be compatible with jax differentiation."
 readme = "README.md"
-license = { file = "LICENSE" }
 authors = [
     { name = "Joseph E. McEwen" }, 
     { name = "Xiao Fang" }, 
     { name = "Jonathan Blazek" },
-    { email = "blazek@berkeley.edu" }
+    { email = "blazek@berkeley.edu" },
+    { name = "Vincent Schacknies" }
     ]
 classifiers = [
     'Development Status :: 5 - Production/Stable',
@@ -38,11 +38,11 @@ dependencies = [
 [project.optional-dependencies]
 
 [project.urls]
-homepage = "https://github.com/jablazek/FAST-PT"
+homepage = "https://github.com/vschac/JAX-PT"
 
 # Explicitly define where package is (same directory as .toml).
 # Include matches full name of module how it would be imported in Python.
 # (Based on guide here: https://setuptools.pypa.io/en/latest/userguide/package_discovery.html)
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["fastpt*"]
+include = ["jaxpt*"]
