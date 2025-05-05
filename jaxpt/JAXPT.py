@@ -1,4 +1,3 @@
-from .jax_utils import p_window, c_window, jax_k_extend
 import jax.numpy as jnp
 from jax import jit
 from time import time
@@ -6,10 +5,11 @@ import numpy as np
 from jax import vjp
 from jax import config
 import jax
-from ..fastpt import FASTPT as FPT
+from fastpt import FASTPT as FPT
+from jaxpt.jax_utils import p_window, c_window, jax_k_extend
+from jaxpt.jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
 config.update("jax_enable_x64", True)
 import functools
-from .jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
 from jax.numpy.fft import ifft, irfft
 
 def process_x_term(X):

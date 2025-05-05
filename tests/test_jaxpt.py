@@ -1,15 +1,15 @@
 import pytest
 import numpy as np
 from fastpt import FASTPT, FPTHandler
-from ..jaxpt.JAXPT import JAXPT
+from jaxpt.JAXPT import JAXPT
 import os
 import jax
 from jax import grad, jit, jacfwd, vmap, vjp
 from jax import numpy as jnp
-from ..jaxpt.jax_utils import jax_k_extend
-from ..jaxpt.jax_utils import c_window as jc_window, p_window as jp_window
-from ..fastpt.utils.fastpt_extr import c_window as fc_window, p_window as fp_window
-from ..fastpt.utils.P_extend import k_extend
+from jaxpt.jax_utils import jax_k_extend
+from jaxpt.jax_utils import c_window as jc_window, p_window as jp_window
+from fastpt.utils.fastpt_extr import c_window as fc_window, p_window as fp_window
+from fastpt.utils.P_extend import k_extend
 
 data_path = os.path.join(os.path.dirname(__file__), 'benchmarking', 'Pk_test.dat')
 d = np.loadtxt(data_path)
@@ -67,9 +67,7 @@ if __name__ == "__main__":
     from fastpt import FASTPT, FPTHandler
     fpt = FASTPT(k, low_extrap=-5, high_extrap=3)
     handler = FPTHandler(fpt)
-    from jaxpt import FP_JAXPT
-    jpt = FP_JAXPT(k, low_extrap=-5, high_extrap=3)
-    jpt.get("P_E", P)
+
 
 @pytest.fixture
 def k_arrays():

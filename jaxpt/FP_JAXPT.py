@@ -1,4 +1,3 @@
-from .jax_utils import p_window, c_window, jax_k_extend
 import jax.numpy as jnp
 from jax import jit
 from time import time
@@ -6,17 +5,14 @@ import numpy as np
 from jax import vjp
 from jax import config
 import jax
-from ..fastpt import FASTPT as FPT
+from fastpt import FASTPT as FPT
+from jaxpt.jax_utils import p_window, c_window, jax_k_extend
+from jaxpt.jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
 config.update("jax_enable_x64", True)
 import functools
-from .jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
 from jax.numpy.fft import ifft, irfft
 from dataclasses import dataclass
 from typing import Optional, Any
-import os
-import sys
-# Add the parent directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 def process_x_term(X):
     """Process X term for JAX compatibility, preserving complex values and handling nested arrays."""
@@ -167,10 +163,11 @@ class JAXPT:
         self.l = jnp.arange(-self.n_l // 2 + 1, self.n_l // 2 + 1)
         self.tau_l = omega * self.l
 
+        #Can now store these parameters as defualts
         if P_window is not None:
-            self.p_win = jnp.array(p_window(self.k_extrap, P_window[0], P_window[1]))
+            self.p_window = jnp.array(p_window(self.k_extrap, P_window[0], P_window[1]))
         else:
-            self.p_win = None
+            self.p_window = None
         self.C_window = C_window
 
         self.term_config = {
@@ -199,35 +196,34 @@ class JAXPT:
             "P_kP3": {"type": "standard", "X": "X_kP3", "operation": lambda x: x / (80 * jnp.pi ** 2)},
             
             # Special cases/unique terms
-            "P_Btype2": {"type": "special", "method": "_get_P_Btype2"},
-            "P_deltaE2": {"type": "special", "method": "_get_P_deltaE2"},
-            "P_der": {"type": "special", "method": "IA_der"},
-            "P_OV": {"type": "special", "method": "OV"},
+            "P_Btype2": {"type": "special", "method": "_get_P_Btype2", "X": None},
+            "P_deltaE2": {"type": "special", "method": "_get_P_deltaE2", "X": None},
+            "P_OV": {"type": "special", "method": "OV", "X": "X_OV"},
             
-            "P_0tE": {"type": "special", "method": "_get_P_0tE"},
-            "P_0EtE": {"type": "special", "method": "_get_P_0EtE"}, 
-            "P_E2tE": {"type": "special", "method": "_get_P_E2tE"},
-            "P_tEtE": {"type": "special", "method": "_get_P_tEtE"},
+            "P_0tE": {"type": "special", "method": "_get_P_0tE", "X": ["X_spt", "X_sptG"]},
+            "P_0EtE": {"type": "special", "method": "_get_P_0EtE", "X": ["X_IA_tij_feG2", "X_IA_deltaE1"]}, 
+            "P_E2tE": {"type": "special", "method": "_get_P_E2tE", "X": ["X_IA_tij_heG2", "X_IA_A"]},
+            "P_tEtE": {"type": "special", "method": "_get_P_tEtE", "X": ["X_IA_tij_F2F2", "X_IA_tij_G2G2", "X_IA_tij_F2G2"]},
             
-            "P_1loop": {"type": "special", "method": "_get_1loop"},
+            "P_1loop": {"type": "special", "method": "_get_1loop", "X": "X_spt"},
             
-            "Pd1d2": {"type": "special", "method": "_get_Pd1d2"},
-            "Pd2d2": {"type": "special", "method": "_get_Pd2d2"},
-            "Pd1s2": {"type": "special", "method": "_get_Pd1s2"},
-            "Pd2s2": {"type": "special", "method": "_get_Pd2s2"},
-            "Ps2s2": {"type": "special", "method": "_get_Ps2s2"},
+            "Pd1d2": {"type": "special", "method": "_get_Pd1d2", "X": "X_spt"},
+            "Pd2d2": {"type": "special", "method": "_get_Pd2d2", "X": "X_spt"},
+            "Pd1s2": {"type": "special", "method": "_get_Pd1s2", "X": "X_spt"},
+            "Pd2s2": {"type": "special", "method": "_get_Pd2s2", "X": "X_spt"},
+            "Ps2s2": {"type": "special", "method": "_get_Ps2s2", "X": "X_spt"},
             
-            "sig4": {"type": "special", "method": "_get_sig4"},
-            "sig3nl": {"type": "special", "method": "_get_sig3nl"},
+            "sig4": {"type": "special", "method": "_get_sig4", "X": "X_spt"},
+            "sig3nl": {"type": "special", "method": "_get_sig3nl", "X": "X_spt"},
             
-            "Pb1L": {"type": "special", "method": "_get_Pb1L"},
-            "Pb1L_2": {"type": "special", "method": "_get_Pb1L_2"},
-            "Pb1L_b2L": {"type": "special", "method": "_get_Pb1L_b2L"},
-            "Pb2L": {"type": "special", "method": "_get_Pb2L"},
-            "Pb2L_2": {"type": "special", "method": "_get_Pb2L_2"},
+            "Pb1L": {"type": "special", "method": "_get_Pb1L", "X": "X_lpt"},
+            "Pb1L_2": {"type": "special", "method": "_get_Pb1L_2", "X": "X_lpt"},
+            "Pb1L_b2L": {"type": "special", "method": "_get_Pb1L_b2L", "X": "X_lpt"},
+            "Pb2L": {"type": "special", "method": "_get_Pb2L", "X": "X_lpt"},
+            "Pb2L_2": {"type": "special", "method": "_get_Pb2L_2", "X": "X_lpt"},
             
-            "P_d2tE": {"type": "special", "method": "_get_P_d2tE"},
-            "P_s2tE": {"type": "special", "method": "_get_P_s2tE"}
+            "P_d2tE": {"type": "special", "method": "_get_P_d2tE", "X": ["X_IA_gb2_F2", "X_IA_gb2_G2"]},
+            "P_s2tE": {"type": "special", "method": "_get_P_s2tE", "X": ["X_IA_gb2_S2F2", "X_IA_gb2_S2G2"]}
         }
 
         self.term_groups = {
@@ -243,22 +239,47 @@ class JAXPT:
             "one_loop_dd_bias_lpt_NL": ["Pb1L", "Pb1L_2", "Pb1L_b2L", "Pb2L", "Pb2L_2", "sig4"]
         }
 
+        # self = ComputeConfig(
+        #     k_extrap=self.k_extrap,
+        #     k_final=self.k_final,
+        #     id_pad=self.id_pad,
+        #     l=self.l,
+        #     m=self.m,
+        #     EK=self.EK,
+        # )
+        self._static_config = StaticConfig(
+            k_size=self.k_size,
+            n_pad=self.n_pad,
+            N=self.N,
+            low_extrap=self.low_extrap,
+            high_extrap=self.high_extrap,
+            EK=self.EK
+        )
+
         #JIT Compile functions
         self.jit_registry = JITFunctionRegistry()
 
-        self.jit_registry.register("J_k_scalar", self.J_k_scalar, 
-                                   static_argnames=["n_pad", "k_size", "EK", "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
-        self.jit_registry.register("J_k_tensor", self.J_k_tensor, 
-                                   static_argnames=["n_pad", "k_size", "EK", "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
-        self.jit_registry.register("fourier_coefficients", self.fourier_coefficients, 
+        self.jit_registry.register("J_k_scalar", J_k_scalar, 
+                                   static_argnames=["static_cfg"])
+        self.jit_registry.register("J_k_tensor", J_k_tensor, 
+                                   static_argnames=["static_cfg"])
+        self.jit_registry.register("fourier_coefficients", fourier_coefficients, 
                                    static_argnames=["N"])
-        self.jit_registry.register("convolution", self.convolution)
-        self.jit_registry.register("compute_term", self.compute_term, 
-                                   static_argnames=["operation"]) #<<<<<<<<<< Why is operation static
-        self.jit_registry.register("apply_extrapolation", self._apply_extrapolation)
-        self.jit_registry.register("get", self.get, 
-                                   static_argnames=["term"]) #<<<<<<<<<< WHy is term static
-        
+        self.jit_registry.register("convolution", convolution)
+        # self.jit_registry.register("compute_term", compute_term, 
+                                #    static_argnames=["operation"]) #<<<<<<<<<< Why is operation static
+        self.jit_registry.register("apply_extrapolation", _apply_extrapolation)
+        # self.jit_registry.register("get", self.get, 
+                                #    static_argnames=["term"]) #<<<<<<<<<< WHy is term static, also does get need to be jitted?
+        for func in ("_get_1loop", "_get_sig4", "_get_Pd1d2", "_get_Pd2d2", "_get_Pd1s2", "_get_Pd2s2", "_get_Ps2s2", "_get_P_0EtE", 
+                     "_get_P_0tE", "_get_P_0EtE", "_get_P_tEtE", "_get_Pb1L", "_get_Pb1L_2", "_get_Pb1L_b2L", "_get_sig3nl",
+                     "_get_Pb2L", "_get_Pb2L_2", "_get_P_d2tE", "_get_P_s2tE"):
+            self.jit_registry.register(func, globals()[func], static_argnames=['static_cfg']) 
+        # Don't need static_cfg so registered seperately
+        self.jit_registry.register("_get_P_Btype2", _get_P_Btype2)    
+        self.jit_registry.register("_get_P_deltaE2", _get_P_deltaE2)                                  
+
+
         #These cannot be cached properties since they would be accessed twice in one function call (the one loop functions)
         #Therefore producing a side affect as the second access is done via cache and breaking differentiability
         self.X_spt = process_x_term(self.temp_fpt.X_spt)
@@ -370,8 +391,54 @@ class JAXPT:
     def k_final(self):
         return self.__k_final
         
+    
+    def one_loop_dd_bias_b3nl(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["one_loop_dd_bias_b3nl"])
 
-    def get(self, term, P, C_window=None, diff_mode=None):
+    def one_loop_dd_bias_lpt_NL(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["one_loop_dd_bias_lpt_NL"])
+
+    def IA_tt(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_tt"])
+
+    def IA_mix(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_mix"])
+
+    def IA_ta(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_ta"])
+
+    def IA_ct(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_ct"])
+
+    def gI_ct(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_ct"])
+
+    def IA_gb2(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_gb2"])
+
+    def gI_ta(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_ta"])
+
+    def gI_tt(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_tt"])
+
+    ## TODO it might make the most sense to move OV out of the class as it is its own calculation function
+    # def OV(self, P, C_window=None):
+    #     jit_JK_tensor = self.jit_registry.get("J_k_tensor")
+    #     P, A = jit_JK_tensor(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
+    #                      P_window=P_window, C_window=C_window)
+    #     P = _apply_extrapolation(P)
+    #     P_OV = P * (2 * jnp.pi) ** 2
+    #     return P_OV
+
+    def IA_der(self, P):
+        return (self.k_original**2)*P
+
+    def kPol(self, P, P_window=None, C_window=None):
+        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["kPol"])
+    
+    #TODO Add P_window back if possible
+    def get(self, term, P, P_window=None, C_window=None, diff_mode=None):
         """
         Get computed term(s) using JAX-compatible dispatch
         
@@ -386,8 +453,9 @@ class JAXPT:
         """
         P = jnp.asarray(P, dtype=jnp.float64)
         C_window = C_window if C_window is None else self.C_window
+        P_window = jnp.array(p_window(self.k_extrap, P_window[0], P_window[1])) if P_window is not None else self.p_window
         if term in self.term_groups: 
-            return tuple(self.get(t, P, C_window) for t in self.term_groups[term])
+            return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups[term])
         
         if term not in self.term_config:
             raise ValueError(f"Unknown term: {term}")
@@ -395,82 +463,60 @@ class JAXPT:
         config = self.term_config[term]
         
         if config["type"] == "standard":
-            X = getattr(config["X"])
+            X = getattr(self, config["X"]) #TODO what about when its multiple X's
             operation = config.get("operation")
-            jit_compute = self.jit_registry.get("compute_term")
-            return jit_compute(X, operation=operation, P=P, C_window=C_window)
+            # jit_compute = self.jit_registry.get("compute_term")
+            return compute_term(P, X, self._static_config, self.k_extrap, self.k_final, 
+                                self.id_pad, self.l, self.m,
+                                P_window=P_window, C_window=C_window, operation=operation)
         
         elif config["type"] == "special":
             method_name = config["method"]
-            
-            if hasattr(method_name):
-                jitted_method = self.jit_registry.get(method_name)
-                result = jitted_method(P, C_window=C_window)
-                return result
+            jitted_method = self.jit_registry.get(method_name)
+            X = config["X"]
+            if isinstance(X, str):
+                X = getattr(self, X)
+            elif isinstance(X, list):
+                X = [getattr(self, x) for x in X]
+            else: #X is None, P_btype2 and P_deltaE2 case
+                return jitted_method(P, self.k_original)
+
+            result = jitted_method(
+                P, X,
+                static_cfg=self._static_config,
+                # Pass required arrays individually:
+                k_extrap=self.k_extrap,
+                k_final=self.k_final,
+                id_pad=self.id_pad,
+                l=self.l,
+                m=self.m,
+                # Pass other arguments
+                P_window=P_window,
+                C_window=C_window
+            )
+            return result
                 
         raise ValueError(f"Unable to process term: {term}")
-    
-    def one_loop_dd_bias_b3nl(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["one_loop_dd_bias_b3nl"])
-
-    def one_loop_dd_bias_lpt_NL(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["one_loop_dd_bias_lpt_NL"])
-
-    def IA_tt(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_tt"])
-
-    def IA_mix(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_mix"])
-
-    def IA_ta(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_ta"])
-
-    def IA_ct(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_ct"])
-
-    def gI_ct(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_ct"])
-
-    def IA_gb2(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_gb2"])
-
-    def gI_ta(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_ta"])
-
-    def gI_tt(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_tt"])
-
-    def OV(self, P, C_window=None):
-        jit_JK_tensor = self.jit_registry.get("J_k_tensor")
-        P, A = jit_JK_tensor(P, self.X_OV, self.k_extrap, self.k_final, self.k_size,
-                                    self.n_pad, self.id_pad, self.l, self.m, self.N, P_window=self.p_win, C_window=C_window,
-                                    low_extrap=self.low_extrap, high_extrap=self.high_extrap, EK=self.EK)
-        P = _apply_extrapolation(P)
-        P_OV = P * (2 * jnp.pi) ** 2
-        return P_OV
-
-    def IA_der(self, P, C_window=None):
-        return (self.k_original**2)*P
-
-    def kPol(self, P, C_window=None):
-        return tuple(self.get(t, P, C_window) for t in self.term_groups["kPol"])
 
 
-# Define a dataclass for common parameters
+# @dataclass(frozen=True)
+# class ComputeConfig:
+#     k_extrap: jnp.ndarray
+#     k_final: jnp.ndarray
+#     id_pad: jnp.ndarray
+#     l: jnp.ndarray
+#     m: jnp.ndarray
+
 @dataclass(frozen=True)
-class ComputeConfig:
-    k_extrap: jnp.ndarray
-    k_final: jnp.ndarray
+class StaticConfig:
     k_size: int
     n_pad: int
-    id_pad: jnp.ndarray
-    l: jnp.ndarray
-    m: jnp.ndarray
     N: int
-    EK: Optional[Any] = None
     low_extrap: Optional[float] = None
     high_extrap: Optional[float] = None
+    EK: Optional[Any] = None
 
+#TODO will JITregistry actually work since the functions are not in the class?
 class JITFunctionRegistry:
     def __init__(self):
         self.functions = {}
@@ -491,98 +537,103 @@ class JITFunctionRegistry:
         return self.functions[name]
 
 
-def _apply_extrapolation(extrap, EK, *args):
-    if not extrap:
+def _apply_extrapolation(*args, EK=None):
+    if EK is None:
         return args if len(args) > 1 else args[0]
     return [EK.PK_original(var)[1] for var in args] if len(args) > 1 else EK.PK_original(args[0])[1]
 
-def compute_term(P, X, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, p_win,
-                 operation=None, C_window=None, low_extrap=None, high_extrap=None, EK=None):        
-    result, _ = J_k_tensor(P, X, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
-    result = _apply_extrapolation(result)
+def compute_term(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
+                 P_window=None, C_window=None, operation=None):        
+    result, _ = J_k_tensor(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
+    result = _apply_extrapolation(result, EK=static_cfg.EK)
 
     if operation:
         final_result = operation(result)
         return final_result
     return result
 
-def _get_1loop(P, C_window=None):
-    P22 = _get_P22(P, C_window=C_window)
-    P13 = _get_P13(P, C_window=C_window)
-    P_1loop = P22 + P13
-    P_1loop = _apply_extrapolation(P_1loop)
-    return P_1loop
 
-def _get_P22(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-             C_window=None, low_extrap=None, high_extrap=None, EK=None):
+def _get_1loop(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
     P22_coef = jnp.array([2*1219/1470., 2*671/1029., 2*32/1715., 2*1/3., 2*62/35., 2*8/35., 1/3.])
-    _, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+    Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     P22_mat = jnp.multiply(P22_coef, jnp.transpose(mat))
     P22 = jnp.sum(P22_mat, axis=1)
-    return P22
+    P13 = P_13_reg(k_extrap, Ps)
+    P_1loop = P22 + P13
+    P_1loop = _apply_extrapolation(P_1loop, EK=static_cfg.EK)
+    return P_1loop
 
-def _get_sig4(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-              C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, _ = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_sig4(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    Ps, _ = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     sig4 = jax.scipy.integrate.trapezoid(k_extrap ** 3 * Ps ** 2, x=jnp.log(k_extrap)) / (2. * jnp.pi ** 2)
     return sig4
 
-def _get_Pd1d2(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-               C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pd1d2(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray, 
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray, 
+               P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     Pd1d2 = 2. * (17. / 21 * mat[0, :] + mat[4, :] + 4. / 21 * mat[1, :])
     Pd1d2 = _apply_extrapolation(Pd1d2)
     return Pd1d2
 
-def _get_Pd2d2(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-               C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pd2d2(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     Pd2d2 = 2. * (mat[0, :])
     Pd2d2 = _apply_extrapolation(Pd2d2)
     return Pd2d2
 
-def _get_Pd1s2(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-               C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pd1s2(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     Pd1s2 = 2. * (8. / 315 * mat[0, :] + 4. / 15 * mat[4, :] + 254. / 441 * mat[1, :] + 2. / 5 * mat[5,:] + 16. / 245 * mat[2,:])
     Pd1s2 = _apply_extrapolation(Pd1s2)
     return Pd1s2
 
-def _get_Pd2s2(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-               C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pd2s2(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     Pd2s2 = 2. * (2. / 3 * mat[1, :])
     Pd2s2 = _apply_extrapolation(Pd2s2)
     return Pd2s2
 
-def _get_Ps2s2(P, X_spt, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, 
-               C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Ps2s2(P, X_spt, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     Pd2s2 = 2. * (4. / 45 * mat[0, :] + 8. / 63 * mat[1, :] + 8. / 35 * mat[2, :])
     Pd2s2 = _apply_extrapolation(Pd2s2)
     return Pd2s2
 
-def _get_P_0EtE(P, X_IA_tij_feG2, X_IA_deltaE1, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, p_win, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    P_feG2, A = J_k_tensor(P, X_IA_tij_feG2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_P_0EtE(P, X_list, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    X_IA_tij_feG2, X_IA_deltaE1 = X_list
+    P_feG2, A = J_k_tensor(P, X_IA_tij_feG2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     P_feG2 = _apply_extrapolation(P_feG2)
     P_A00E = compute_term(X_IA_deltaE1, operation=lambda x: 2 * x, 
                                     P=P, C_window=C_window)
@@ -590,11 +641,13 @@ def _get_P_0EtE(P, X_IA_tij_feG2, X_IA_deltaE1, k_extrap, k_final, k_size, n_pad
     P_0EtE = 2*P_0EtE
     return P_0EtE
 
-def _get_P_E2tE(P, X_IA_tij_heG2, X_IA_A, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, p_win, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    P_heG2, A = J_k_tensor(P,X_IA_tij_heG2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_P_E2tE(P, X_list, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    X_IA_tij_heG2, X_IA_A = X_list
+    P_heG2, A = J_k_tensor(P, X_IA_tij_heG2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
     P_heG2 = _apply_extrapolation(P_heG2)
     P_A0E2 = compute_term(X_IA_A, operation=lambda x: 2 * x, 
                                 P=P, C_window=C_window)
@@ -602,27 +655,28 @@ def _get_P_E2tE(P, X_IA_tij_heG2, X_IA_A, k_extrap, k_final, k_size, n_pad, id_p
     P_E2tE = 2*P_E2tE
     return P_E2tE
     
-def _get_P_tEtE(P, X_IA_tij_F2F2, X_IA_tij_G2G2, X_IA_tij_F2G2, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, p_win, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    P_F2F2, A = J_k_tensor(P,X_IA_tij_F2F2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
-    P_G2G2, A = J_k_tensor(P,X_IA_tij_G2G2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
-    P_F2G2, A = J_k_tensor(P,X_IA_tij_F2G2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_P_tEtE(P, X_list, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    X_IA_tij_F2F2, X_IA_tij_G2G2, X_IA_tij_F2G2 = X_list
+    P_F2F2, A = J_k_tensor(P,X_IA_tij_F2F2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
+    P_G2G2, A = J_k_tensor(P,X_IA_tij_G2G2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
+    P_F2G2, A = J_k_tensor(P,X_IA_tij_F2G2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
     P_F2F2, P_G2G2, P_F2G2 = _apply_extrapolation(P_F2F2, P_G2G2, P_F2G2)
     P_tEtE = P_F2F2+P_G2G2-2*P_F2G2
     P_tEtE = 2*P_tEtE
     return P_tEtE
 
-def _get_Pb1L_b2L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pb1L_b2L(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X3 = (50. / 21.) * j000 + 2. * j1n11 - (8. / 21.) * j002
@@ -630,11 +684,12 @@ def _get_Pb1L_b2L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb1L_b2L = _apply_extrapolation(Pb1L_b2L)
     return Pb1L_b2L
 
-def _get_Pb2L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pb2L(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X4 = (34. / 21.) * j000 + 2. * j1n11 + (8. / 21.) * j002
@@ -642,11 +697,12 @@ def _get_Pb2L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb2L = _apply_extrapolation(Pb2L)
     return Pb2L
 
-def _get_Pb2L_2(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    _, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pb2L_2(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X5 = j000
@@ -654,27 +710,29 @@ def _get_Pb2L_2(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb2L_2 = _apply_extrapolation(Pb2L_2)
     return Pb2L_2
 
-def _get_P_d2tE(P, X_IA_gb2_F2, X_IA_gb2_G2, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, p_win, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    P_F2, _ = J_k_tensor(P, X_IA_gb2_F2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
-    P_G2, _ = J_k_tensor(P, X_IA_gb2_G2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_P_d2tE(P, X_list, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    X_IA_gb2_F2, X_IA_gb2_G2 = X_list
+    P_F2, _ = J_k_tensor(P, X_IA_gb2_F2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
+    P_G2, _ = J_k_tensor(P, X_IA_gb2_G2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
     P_F2 = _apply_extrapolation(P_F2)
     P_G2 = _apply_extrapolation(P_G2)
     P_d2tE = 2 * (P_G2 - P_F2)
     return P_d2tE
 
-def _get_P_s2tE(P, X_IA_gb2_S2F2, X_IA_gb2_S2G2, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, p_win, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    P_S2F2, _ = J_k_tensor(P, X_IA_gb2_S2F2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
-    P_S2G2, _ = J_k_tensor(P, X_IA_gb2_S2G2, k_extrap, k_final, k_size,
-                                n_pad, id_pad, l, m, N, P_window=p_win, C_window=C_window,
-                                low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_P_s2tE(P, X_list, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window, C_window=None):
+    X_IA_gb2_S2F2, X_IA_gb2_S2G2 = X_list
+    P_S2F2, _ = J_k_tensor(P, X_IA_gb2_S2F2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
+    P_S2G2, _ = J_k_tensor(P, X_IA_gb2_S2G2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
     P_S2F2 = _apply_extrapolation(P_S2F2)
     P_S2G2 = _apply_extrapolation(P_S2G2)
     P_s2tE = 2 * (P_S2G2 - P_S2F2)
@@ -684,19 +742,15 @@ def _get_P_s2tE(P, X_IA_gb2_S2F2, X_IA_gb2_S2G2, k_extrap, k_final, k_size, n_pa
 
 #Get functions that use jax_utils functions, produce non exact outputs though 
 #differences are due to jpt versions of input parameters (parameters pass allclose, output does not)
-def _get_P13(P, X_spt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, _ = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
-    P13 = P_13_reg(k_extrap, Ps)
-    return P13
 
-def _get_Pb1L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+#Also P13 but that was absorbed in P_1loop
+
+def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X1 = ((144. / 245.) * j000 - (176. / 343.) * j002 - (128. / 1715.) * j004 + (16. / 35.) * j1n11 - (
@@ -706,11 +760,12 @@ def _get_Pb1L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb1L = _apply_extrapolation(Pb1L)
     return Pb1L
 
-def _get_Pb1L_2(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pb1L_2(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X2 = ((16. / 21.) * j000 - (16. / 21.) * j002 + (16. / 35.) * j1n11 - (16. / 35.) * j1n13)
@@ -719,22 +774,24 @@ def _get_Pb1L_2(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb1L_2 = _apply_extrapolation(Pb1L_2)
     return Pb1L_2
 
-def _get_P_Btype2(P, k_original, C_window=None):
+def _get_P_Btype2(P, k_original):
     P_Btype2 = P_IA_B(k_original, P)
     P_Btype2 = 4 * P_Btype2
     return P_Btype2
 
-def _get_P_deltaE2(P, k_original, C_window=None):
+def _get_P_deltaE2(P, k_original):
     P_deltaE2 = P_IA_deltaE2(k_original, P)
     #Add extrap?
     P_deltaE2 = 2 * P_deltaE2
     return P_deltaE2
 
-def _get_P_0tE(P, X_spt, X_sptG, k_original, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, mat = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_P_0tE(P, X_list, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    X_spt, X_sptG = X_list
+    Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     one_loop_coef = jnp.array(
         [2 * 1219 / 1470., 2 * 671 / 1029., 2 * 32 / 1715., 2 * 1 / 3., 2 * 62 / 35., 2 * 8 / 35., 1 / 3.])
     P22_mat = jnp.multiply(one_loop_coef, jnp.transpose(mat))
@@ -742,32 +799,33 @@ def _get_P_0tE(P, X_spt, X_sptG, k_original, k_extrap, k_final, k_size, n_pad, i
 
     one_loop_coefG= jnp.array(
         [2*1003/1470, 2*803/1029, 2*64/1715, 2*1/3, 2*58/35, 2*12/35, 1/3])
-    PsG, matG = J_k_scalar(P, X_sptG, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+    PsG, matG = J_k_scalar(P, X_sptG, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     P22G_mat = jnp.multiply(one_loop_coefG, jnp.transpose(matG))
     P_22G = jnp.sum(P22G_mat, 1)
     P_22F, P_22G = _apply_extrapolation(P_22F, P_22G)
-    P_13G = P_IA_13G(k_original,P,)
-    P_13F = P_IA_13F(k_original, P)
+    P_13G = P_IA_13G(static_cfg.k_original,P,)
+    P_13F = P_IA_13F(static_cfg.k_original, P)
     P_0tE = P_22G-P_22F+P_13G-P_13F
     P_0tE = 2*P_0tE
     return P_0tE
 
-def _get_sig3nl(P, X_spt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, _ = J_k_scalar(P, X_spt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_sig3nl(P, X_spt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    Ps, _ = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     sig3nl = Y1_reg_NL(k_extrap, Ps)
     sig3nl = _apply_extrapolation(sig3nl)
     return sig3nl
 
-def _get_Pb1L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X1 = ((144. / 245.) * j000 - (176. / 343.) * j002 - (128. / 1715.) * j004 + (16. / 35.) * j1n11 - (
@@ -777,11 +835,12 @@ def _get_Pb1L(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb1L = _apply_extrapolation(Pb1L)
     return Pb1L
 
-def _get_Pb1L_2(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, 
-                C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    Ps, mat = J_k_scalar(P, X_lpt, -2, m, N, n_pad, id_pad, 
-                                k_extrap, k_final, k_size, l,
-                                C_window=C_window, low_extrap=low_extrap, high_extrap=high_extrap, EK=EK)
+def _get_Pb1L_2(P, X_lpt, static_cfg: StaticConfig,
+                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+                  P_window, C_window=None):
+    Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
                                                         mat[5, :], mat[6, :]]
     X2 = ((16. / 21.) * j000 - (16. / 21.) * j002 + (16. / 35.) * j1n11 - (16. / 35.) * j1n13)
@@ -790,68 +849,72 @@ def _get_Pb1L_2(P, X_lpt, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N,
     Pb1L_2 = _apply_extrapolation(Pb1L_2)
     return Pb1L_2
 
-
-def J_k_scalar(P, X, nu, m, N, n_pad, id_pad, k_extrap, k_final, k_size, l, C_window=None, low_extrap=None, high_extrap=None, EK=None):
-    
+def J_k_scalar(P, X, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray, # Dynamic arrays from ComputeConfig
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  # More dynamic arrays
+               P_window=None, C_window=None):
     pf, p, g_m, g_n, two_part_l, h_l = X
 
-    if (low_extrap is not None):
-        P = EK.extrap_P_low(P)
-    
-    if (high_extrap is not None):
-        P = EK.extrap_P_high(P)
-    
+    if (static_cfg.low_extrap is not None):
+        P = static_cfg.EK.extrap_P_low(P)
+
+    if (static_cfg.high_extrap is not None):
+        P = static_cfg.EK.extrap_P_high(P)
+    nu = -2
     P_b = P * k_extrap ** (-nu)
-    
-    if (n_pad > 0):
-        P_b = jnp.pad(P_b, pad_width=(n_pad, n_pad), mode='constant', constant_values=0)
-    
-    c_m = fourier_coefficients(P_b, m, N, C_window)
-    
-    A_out = jnp.zeros((pf.shape[0], k_size))
-    
+
+    if (static_cfg.n_pad > 0):
+        P_b = jnp.pad(P_b, pad_width=(static_cfg.n_pad, static_cfg.n_pad), mode='constant', constant_values=0)
+
+    c_m = fourier_coefficients(P_b, m, static_cfg.N, C_window)
+
+    A_out = jnp.zeros((pf.shape[0], static_cfg.k_size))
+
     def process_single_row(i):
         C_l = convolution(c_m, c_m, g_m[i], g_n[i], h_l[i], None if two_part_l is None else two_part_l[i])
-        
+
         l_size = l.shape[0]
-        l_midpoint = l_size // 2  # Assuming l is centered around 0
-        
-        c_plus = C_l[l_midpoint:]  # Positive part (including 0)
-        c_minus = C_l[:l_midpoint]  # Negative part
-        
-        # Combine them, dropping the last element of c_plus
+        l_midpoint = l_size // 2
+
+        c_plus = C_l[l_midpoint:]
+        c_minus = C_l[:l_midpoint]
+
         C_l_combined = jnp.concatenate([c_plus[:-1], c_minus])
-        
+
         A_k = ifft(C_l_combined) * C_l_combined.size
-        
-        stride = max(1, A_k.shape[0] // k_size)
-        
-        return jnp.real(A_k[::stride][:k_size]) * pf[i] * k_final ** (-p[i] - 2)
-    
+
+        stride = max(1, A_k.shape[0] // static_cfg.k_size)
+
+        return jnp.real(A_k[::stride][:static_cfg.k_size]) * pf[i] * k_final ** (-p[i] - 2)
+
     rows = jnp.arange(pf.shape[0])
     A_out = jax.vmap(process_single_row)(rows)
-    
-    m_midpoint = (m.shape[0] + 1) // 2  # Position of 0 in m
-    c_m_positive = c_m[m_midpoint-1:]  # Select m >= 0
-    
-    P_out = irfft(c_m_positive) * k_final ** nu * N
-    
-    if (n_pad > 0):
+
+    m_midpoint = (m.shape[0] + 1) // 2
+    c_m_positive = c_m[m_midpoint-1:]
+
+    P_out = irfft(c_m_positive) * k_final ** nu * static_cfg.N
+
+    if (static_cfg.n_pad > 0):
         P_out = P_out[id_pad]
         A_out = A_out[:, id_pad]
-    
+
     return P_out, A_out
 
 
-def J_k_tensor(P, X, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, C_window=None, P_window=None, low_extrap=None, high_extrap=None, EK=None):
+
+def J_k_tensor(P, X, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray, # Dynamic arrays from ComputeConfig
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  # More dynamic arrays
+               P_window=None, C_window=None):
     
     pf, p, nu1, nu2, g_m, g_n, h_l = X
 
-    if (low_extrap is not None):
-        P = EK.extrap_P_low(P)
+    if (static_cfg.low_extrap is not None):
+        P = static_cfg.EK.extrap_P_low(P)
     
-    if (high_extrap is not None):
-        P = EK.extrap_P_high(P)
+    if (static_cfg.high_extrap is not None):
+        P = static_cfg.EK.extrap_P_high(P)
     
     l_midpoint = l.shape[0] // 2
 
@@ -871,12 +934,12 @@ def J_k_tensor(P, X, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, C_window
             P_b1 = P_b1 * P_window
             P_b2 = P_b2 * P_window
             
-        if n_pad > 0:
-            P_b1 = jnp.pad(P_b1, pad_width=(n_pad, n_pad), mode='constant', constant_values=0)
-            P_b2 = jnp.pad(P_b2, pad_width=(n_pad, n_pad), mode='constant', constant_values=0)
+        if static_cfg.n_pad > 0:
+            P_b1 = jnp.pad(P_b1, pad_width=(static_cfg.n_pad, static_cfg.n_pad), mode='constant', constant_values=0)
+            P_b2 = jnp.pad(P_b2, pad_width=(static_cfg.n_pad, static_cfg.n_pad), mode='constant', constant_values=0)
             
-        c_m = fourier_coefficients(P_b1, m, N, C_window)
-        c_n = fourier_coefficients(P_b2, m, N, C_window)
+        c_m = fourier_coefficients(P_b1, m, static_cfg.N, C_window)
+        c_n = fourier_coefficients(P_b2, m, static_cfg.N, C_window)
         
         C_l = convolution(c_m, c_n, g_m_i, g_n_i, h_l_i)
         
@@ -892,7 +955,7 @@ def J_k_tensor(P, X, k_extrap, k_final, k_size, n_pad, id_pad, l, m, N, C_window
     
     P_fin = jnp.sum(A_out, axis=0)
     
-    if n_pad > 0:
+    if static_cfg.n_pad > 0:
         P_fin = P_fin[id_pad]
         A_out = A_out[:, id_pad]
     
