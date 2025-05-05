@@ -34,6 +34,11 @@
 '''
 
 from .info import __version__
+# Core functionality
+from .core.FASTPT import FASTPT
+from .core.FASTPT_simple import FASTPT as FASTPT_simple
+from .core.FPTHandler import FPTHandler
+from .core.CacheManager import CacheManager
 
-from .JAXPT import JAXPT
-from .FP_JAXPT import JAXPT as FP_JAXPT
+
+from .misc import HT

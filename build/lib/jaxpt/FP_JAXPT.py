@@ -6,7 +6,7 @@ import numpy as np
 from jax import vjp
 from jax import config
 import jax
-from ..fastpt import FASTPT as FPT
+from fastpt import FASTPT as FPT
 config.update("jax_enable_x64", True)
 import functools
 from .jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
@@ -244,7 +244,7 @@ class JAXPT:
         except:
             print("J_k_scalar JIT compilation failed. Using default python implementation.")
         try:
-            self._J_k_tensor = jit(self.J_k_tensor, static_argnames=["n_pad", "k_size", "EK",
+            self._J_k_tensor_core = jit(self.J_k_tensor, static_argnames=["n_pad", "k_size", "EK",
                                                                           "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
         except:
             print("J_k_tensor JIT compilation failed. Using default python implementation.")
@@ -419,37 +419,37 @@ class JAXPT:
                 
         raise ValueError(f"Unable to process term: {term}")
     
-    def one_loop_dd_bias_b3nl(self, P, C_window=None):
+    def one_loop_dd_bias_b3nl_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["one_loop_dd_bias_b3nl"])
 
-    def one_loop_dd_bias_lpt_NL(self, P, C_window=None):
+    def one_loop_dd_bias_lpt_NL_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["one_loop_dd_bias_lpt_NL"])
 
-    def IA_tt(self, P, C_window=None):
+    def IA_tt_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_tt"])
 
-    def IA_mix(self, P, C_window=None):
+    def IA_mix_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_mix"])
 
-    def IA_ta(self, P, C_window=None):
+    def IA_ta_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_ta"])
 
-    def IA_ct(self, P, C_window=None):
+    def IA_ct_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_ct"])
 
-    def gI_ct(self, P, C_window=None):
+    def gI_ct_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_ct"])
 
-    def IA_gb2(self, P, C_window=None):
+    def IA_gb2_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["IA_gb2"])
 
-    def gI_ta(self, P, C_window=None):
+    def gI_ta_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_ta"])
 
-    def gI_tt(self, P, C_window=None):
+    def gI_tt_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_tt"])
 
-    def OV(self, P, C_window=None):
+    def OV_core(self, P, C_window=None):
         P, A = J_k_tensor(P, self.X_OV, self.k_extrap, self.k_final, self.k_size,
                                     self.n_pad, self.id_pad, self.l, self.m, self.N, P_window=self.p_win, C_window=C_window,
                                     low_extrap=self.low_extrap, high_extrap=self.high_extrap, EK=self.EK)
@@ -457,10 +457,10 @@ class JAXPT:
         P_OV = P * (2 * jnp.pi) ** 2
         return P_OV
 
-    def IA_der(self, P, C_window=None):
+    def IA_der_core(self, P, C_window=None):
         return (self.k_original**2)*P
 
-    def kPol(self, P, C_window=None):
+    def kPol_core(self, P, C_window=None):
         return tuple(self.get(t, P, C_window) for t in self.term_groups["kPol"])
 
 

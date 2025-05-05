@@ -6,7 +6,7 @@ import numpy as np
 from jax import vjp
 from jax import config
 import jax
-from ..fastpt import FASTPT as FPT
+from fastpt import FASTPT as FPT
 config.update("jax_enable_x64", True)
 import functools
 from .jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G

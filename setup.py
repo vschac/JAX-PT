@@ -11,4 +11,4 @@ else:
     raise RuntimeError("Unable to find version string in %s." % (version_file,))
 print('FASTPT version is %s'%(jaxpt_version))
 
-setup(version=jaxpt_version)
+setup(version=jaxpt_version, packages=find_packages())
