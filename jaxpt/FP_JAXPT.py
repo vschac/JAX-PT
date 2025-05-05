@@ -11,6 +11,12 @@ config.update("jax_enable_x64", True)
 import functools
 from .jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
 from jax.numpy.fft import ifft, irfft
+from dataclasses import dataclass
+from typing import Optional, Any
+import os
+import sys
+# Add the parent directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 def process_x_term(X):
     """Process X term for JAX compatibility, preserving complex values and handling nested arrays."""
@@ -238,36 +244,20 @@ class JAXPT:
         }
 
         #JIT Compile functions
-        try:
-            self.J_k_scalar = jit(self.J_k_scalar, static_argnames=["n_pad", "k_size", "EK",
-                                                                     "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
-        except:
-            print("J_k_scalar JIT compilation failed. Using default python implementation.")
-        try:
-            self._J_k_tensor = jit(self.J_k_tensor, static_argnames=["n_pad", "k_size", "EK",
-                                                                          "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
-        except:
-            print("J_k_tensor JIT compilation failed. Using default python implementation.")
-        try:
-            self.fourier_coefficients = jit(self.fourier_coefficients, static_argnames=["N"])
-        except:
-            print("fourier_coefficients JIT compilation failed. Using default python implementation.")
-        try:
-            self.convolution = jit(self.convolution)
-        except:
-            print("convolution JIT compilation failed. Using default python implementation.")
-        try:
-            self.compute_term = jit(self.compute_term, static_argnames=["operation"])
-        except:
-            print("Compute term JIT compilation failed. Using default python implementation.")
-        try:
-            self._apply_extrapolation = jit(self._apply_extrapolation)
-        except:
-            print("Apply extrapolation JIT compilation failed. Using default python implementation.")
-        try:
-            self.get = jit(self.get, static_argnames=["term"])
-        except:
-            print("get JIT compilation failed. Using default python implementation.")
+        self.jit_registry = JITFunctionRegistry()
+
+        self.jit_registry.register("J_k_scalar", self.J_k_scalar, 
+                                   static_argnames=["n_pad", "k_size", "EK", "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
+        self.jit_registry.register("J_k_tensor", self.J_k_tensor, 
+                                   static_argnames=["n_pad", "k_size", "EK", "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
+        self.jit_registry.register("fourier_coefficients", self.fourier_coefficients, 
+                                   static_argnames=["N"])
+        self.jit_registry.register("convolution", self.convolution)
+        self.jit_registry.register("compute_term", self.compute_term, 
+                                   static_argnames=["operation"]) #<<<<<<<<<< Why is operation static
+        self.jit_registry.register("apply_extrapolation", self._apply_extrapolation)
+        self.jit_registry.register("get", self.get, 
+                                   static_argnames=["term"]) #<<<<<<<<<< WHy is term static
         
         #These cannot be cached properties since they would be accessed twice in one function call (the one loop functions)
         #Therefore producing a side affect as the second access is done via cache and breaking differentiability
@@ -395,8 +385,8 @@ class JAXPT:
             Window parameters
         """
         P = jnp.asarray(P, dtype=jnp.float64)
-        C_window = C_window if C_window is None else C_window
-        if term in self.term_groups:
+        C_window = C_window if C_window is None else self.C_window
+        if term in self.term_groups: 
             return tuple(self.get(t, P, C_window) for t in self.term_groups[term])
         
         if term not in self.term_config:
@@ -407,14 +397,15 @@ class JAXPT:
         if config["type"] == "standard":
             X = getattr(config["X"])
             operation = config.get("operation")
-            return compute_term(X, operation=operation, P=P, C_window=C_window)
+            jit_compute = self.jit_registry.get("compute_term")
+            return jit_compute(X, operation=operation, P=P, C_window=C_window)
         
         elif config["type"] == "special":
             method_name = config["method"]
             
             if hasattr(method_name):
-                method = getattr(method_name)
-                result = method(P, C_window=C_window)
+                jitted_method = self.jit_registry.get(method_name)
+                result = jitted_method(P, C_window=C_window)
                 return result
                 
         raise ValueError(f"Unable to process term: {term}")
@@ -450,7 +441,8 @@ class JAXPT:
         return tuple(self.get(t, P, C_window) for t in self.term_groups["gI_tt"])
 
     def OV(self, P, C_window=None):
-        P, A = J_k_tensor(P, self.X_OV, self.k_extrap, self.k_final, self.k_size,
+        jit_JK_tensor = self.jit_registry.get("J_k_tensor")
+        P, A = jit_JK_tensor(P, self.X_OV, self.k_extrap, self.k_final, self.k_size,
                                     self.n_pad, self.id_pad, self.l, self.m, self.N, P_window=self.p_win, C_window=C_window,
                                     low_extrap=self.low_extrap, high_extrap=self.high_extrap, EK=self.EK)
         P = _apply_extrapolation(P)
@@ -464,6 +456,39 @@ class JAXPT:
         return tuple(self.get(t, P, C_window) for t in self.term_groups["kPol"])
 
 
+# Define a dataclass for common parameters
+@dataclass(frozen=True)
+class ComputeConfig:
+    k_extrap: jnp.ndarray
+    k_final: jnp.ndarray
+    k_size: int
+    n_pad: int
+    id_pad: jnp.ndarray
+    l: jnp.ndarray
+    m: jnp.ndarray
+    N: int
+    EK: Optional[Any] = None
+    low_extrap: Optional[float] = None
+    high_extrap: Optional[float] = None
+
+class JITFunctionRegistry:
+    def __init__(self):
+        self.functions = {}
+        
+    def register(self, name, func, static_argnames=None):
+        try:
+            jitted_func = jit(func, static_argnames=static_argnames)
+            self.functions[name] = jitted_func
+            return jitted_func
+        except Exception as e:
+            print(f"Failed to JIT compile {name}: {e}")
+            self.functions[name] = func
+            return func
+            
+    def get(self, name):
+        if name not in self.functions:
+            raise KeyError(f"Function {name} not registered")
+        return self.functions[name]
 
 
 def _apply_extrapolation(extrap, EK, *args):
@@ -899,3 +924,10 @@ def convolution(c1, c2, g_m, g_n, h_l, two_part_l=None):
         C_l = C_l * h_l
 
     return C_l
+
+
+if __name__ == "__main__":
+    k = jnp.logspace(-3, 1, 1000)
+    jpt = JAXPT(k)
+    jpt.get("P_E")
+    

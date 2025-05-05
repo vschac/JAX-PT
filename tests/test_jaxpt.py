@@ -1,14 +1,15 @@
 import pytest
 import numpy as np
 from fastpt import FASTPT, FPTHandler
-from fastpt.JAXPT import JAXPT
+from ..jaxpt.JAXPT import JAXPT
 import os
 import jax
 from jax import grad, jit, jacfwd, vmap, vjp
 from jax import numpy as jnp
-from fastpt.jax_utils import jax_k_extend
-from fastpt.jax_utils import c_window as jc_window, p_window as jp_window
-from fastpt.fastpt_extr import c_window as fc_window, p_window as fp_window
+from ..jaxpt.jax_utils import jax_k_extend
+from ..jaxpt.jax_utils import c_window as jc_window, p_window as jp_window
+from ..fastpt.utils.fastpt_extr import c_window as fc_window, p_window as fp_window
+from ..fastpt.utils.P_extend import k_extend
 
 data_path = os.path.join(os.path.dirname(__file__), 'benchmarking', 'Pk_test.dat')
 d = np.loadtxt(data_path)
@@ -62,14 +63,13 @@ def profile_jaxpt():
     return jpt, initialization_time, memory_after - memory_before
 
 if __name__ == "__main__":
-    profile_jaxpt()
+    # profile_jaxpt()
     from fastpt import FASTPT, FPTHandler
     fpt = FASTPT(k, low_extrap=-5, high_extrap=3)
     handler = FPTHandler(fpt)
-    t0 = time()
-    handler.get("P_E", P=P)
-    t3 = time()
-    print(f"FASTPT time: {t3 - t0:.4f} seconds")
+    from jaxpt import FP_JAXPT
+    jpt = FP_JAXPT(k, low_extrap=-5, high_extrap=3)
+    jpt.get("P_E", P)
 
 @pytest.fixture
 def k_arrays():
@@ -192,7 +192,6 @@ def test_every_term(jpt, fpt, term):
 ############## k_extend Tests ##############
 def test_k_extend_initialization(jpt, fpt):
     """Test that jax_k_extend initializes with the same k values as k_extend"""
-    from fastpt.P_extend import k_extend
     
     # Test with no extensions
     jk_ext = jax_k_extend(jpt.k_original)
@@ -229,7 +228,6 @@ def test_k_extend_initialization(jpt, fpt):
 
 def test_extrap_k(jpt, fpt):
     """Test that extrap_k returns the same values in both implementations"""
-    from fastpt.P_extend import k_extend
     
     # Initialize with both extensions
     low_ext, high_ext = -4.0, 3.0
@@ -245,7 +243,6 @@ def test_extrap_k(jpt, fpt):
 
 def test_extrap_P_low(jpt, fpt):
     """Test that extrap_P_low returns the same values in both implementations"""
-    from fastpt.P_extend import k_extend
     
     # Initialize with low extension only
     low_ext = -4.0
@@ -268,7 +265,6 @@ def test_extrap_P_low(jpt, fpt):
 
 def test_extrap_P_high(jpt, fpt):
     """Test that extrap_P_high returns the same values in both implementations"""
-    from fastpt.P_extend import k_extend
     
     # Initialize with high extension only
     high_ext = 3.0
@@ -291,7 +287,6 @@ def test_extrap_P_high(jpt, fpt):
 
 def test_PK_original(jpt, fpt):
     """Test that PK_original returns the same values in both implementations"""
-    from fastpt.P_extend import k_extend
     
     # Initialize with both extensions
     low_ext, high_ext = -4.0, 3.0
@@ -313,7 +308,6 @@ def test_PK_original(jpt, fpt):
 
 def test_full_extrapolation_workflow(jpt, fpt):
     """Test the complete extrapolation workflow with both implementations"""
-    from fastpt.P_extend import k_extend
     
     # Initialize with both extensions
     low_ext, high_ext = -4.0, 3.0
