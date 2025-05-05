@@ -86,7 +86,7 @@ def jax_cached_property(method):
     return property(wrapper)
 
 class JAXPT: 
-    def __init__(self, k, P_window=None, C_window=None, low_extrap=None, high_extrap=None, n_pad=None):
+    def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None):
         
         if (k is None or len(k) == 0):
             raise ValueError('You must provide an input k array.')        
@@ -95,11 +95,6 @@ class JAXPT:
                 k = jnp.asarray(k, dtype=jnp.float64)
             except:
                 raise ValueError('Input k array must be a jax numpy array, automatic conversion failed.')
-        if not isinstance(P_window, jnp.ndarray) and P_window is not None:
-            try:
-                P_window = jnp.asarray(P_window, dtype=jnp.float64)
-            except:
-                raise ValueError('Input P_window array must be a jax numpy array, automatic conversion failed.')
             
         self.__k_original = k
         self.temp_fpt = FPT(k.copy(), low_extrap=low_extrap, high_extrap=high_extrap, n_pad=n_pad)
@@ -163,12 +158,6 @@ class JAXPT:
         self.l = jnp.arange(-self.n_l // 2 + 1, self.n_l // 2 + 1)
         self.tau_l = omega * self.l
 
-        #Can now store these parameters as defualts
-        if P_window is not None:
-            self.p_window = jnp.array(p_window(self.k_extrap, P_window[0], P_window[1]))
-        else:
-            self.p_window = None
-        self.C_window = C_window
 
         self.term_config = {
             # Standard compute_term cases
@@ -452,8 +441,7 @@ class JAXPT:
             Window parameters
         """
         P = jnp.asarray(P, dtype=jnp.float64)
-        C_window = C_window if C_window is None else self.C_window
-        P_window = jnp.array(p_window(self.k_extrap, P_window[0], P_window[1])) if P_window is not None else self.p_window
+
         if term in self.term_groups: 
             return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups[term])
         
@@ -557,7 +545,7 @@ def compute_term(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
 def _get_1loop(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     P22_coef = jnp.array([2*1219/1470., 2*671/1029., 2*32/1715., 2*1/3., 2*62/35., 2*8/35., 1/3.])
     Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
@@ -571,7 +559,7 @@ def _get_1loop(P, X_spt, static_cfg: StaticConfig,
 def _get_sig4(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     Ps, _ = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     sig4 = jax.scipy.integrate.trapezoid(k_extrap ** 3 * Ps ** 2, x=jnp.log(k_extrap)) / (2. * jnp.pi ** 2)
@@ -580,7 +568,7 @@ def _get_sig4(P, X_spt, static_cfg: StaticConfig,
 def _get_Pd1d2(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray, 
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray, 
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     Pd1d2 = 2. * (17. / 21 * mat[0, :] + mat[4, :] + 4. / 21 * mat[1, :])
@@ -590,7 +578,7 @@ def _get_Pd1d2(P, X_spt, static_cfg: StaticConfig,
 def _get_Pd2d2(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     Pd2d2 = 2. * (mat[0, :])
@@ -600,7 +588,7 @@ def _get_Pd2d2(P, X_spt, static_cfg: StaticConfig,
 def _get_Pd1s2(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     Pd1s2 = 2. * (8. / 315 * mat[0, :] + 4. / 15 * mat[4, :] + 254. / 441 * mat[1, :] + 2. / 5 * mat[5,:] + 16. / 245 * mat[2,:])
@@ -610,7 +598,7 @@ def _get_Pd1s2(P, X_spt, static_cfg: StaticConfig,
 def _get_Pd2s2(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     Pd2s2 = 2. * (2. / 3 * mat[1, :])
@@ -620,7 +608,7 @@ def _get_Pd2s2(P, X_spt, static_cfg: StaticConfig,
 def _get_Ps2s2(P, X_spt, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     Pd2s2 = 2. * (4. / 45 * mat[0, :] + 8. / 63 * mat[1, :] + 8. / 35 * mat[2, :])
@@ -630,7 +618,7 @@ def _get_Ps2s2(P, X_spt, static_cfg: StaticConfig,
 def _get_P_0EtE(P, X_list, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     X_IA_tij_feG2, X_IA_deltaE1 = X_list
     P_feG2, A = J_k_tensor(P, X_IA_tij_feG2, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
@@ -644,7 +632,7 @@ def _get_P_0EtE(P, X_list, static_cfg: StaticConfig,
 def _get_P_E2tE(P, X_list, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     X_IA_tij_heG2, X_IA_A = X_list
     P_heG2, A = J_k_tensor(P, X_IA_tij_heG2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
@@ -658,7 +646,7 @@ def _get_P_E2tE(P, X_list, static_cfg: StaticConfig,
 def _get_P_tEtE(P, X_list, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     X_IA_tij_F2F2, X_IA_tij_G2G2, X_IA_tij_F2G2 = X_list
     P_F2F2, A = J_k_tensor(P,X_IA_tij_F2F2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
@@ -674,7 +662,7 @@ def _get_P_tEtE(P, X_list, static_cfg: StaticConfig,
 def _get_Pb1L_b2L(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -687,7 +675,7 @@ def _get_Pb1L_b2L(P, X_lpt, static_cfg: StaticConfig,
 def _get_Pb2L(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -700,7 +688,7 @@ def _get_Pb2L(P, X_lpt, static_cfg: StaticConfig,
 def _get_Pb2L_2(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -713,7 +701,7 @@ def _get_Pb2L_2(P, X_lpt, static_cfg: StaticConfig,
 def _get_P_d2tE(P, X_list, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     X_IA_gb2_F2, X_IA_gb2_G2 = X_list
     P_F2, _ = J_k_tensor(P, X_IA_gb2_F2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
@@ -727,7 +715,7 @@ def _get_P_d2tE(P, X_list, static_cfg: StaticConfig,
 def _get_P_s2tE(P, X_list, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window, C_window=None):
+               P_window=None, C_window=None):
     X_IA_gb2_S2F2, X_IA_gb2_S2G2 = X_list
     P_S2F2, _ = J_k_tensor(P, X_IA_gb2_S2F2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
@@ -748,7 +736,7 @@ def _get_P_s2tE(P, X_list, static_cfg: StaticConfig,
 def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -763,7 +751,7 @@ def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
 def _get_Pb1L_2(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -788,7 +776,7 @@ def _get_P_deltaE2(P, k_original):
 def _get_P_0tE(P, X_list, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     X_spt, X_sptG = X_list
     Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
@@ -813,7 +801,7 @@ def _get_P_0tE(P, X_list, static_cfg: StaticConfig,
 def _get_sig3nl(P, X_spt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     Ps, _ = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     sig3nl = Y1_reg_NL(k_extrap, Ps)
@@ -823,7 +811,7 @@ def _get_sig3nl(P, X_spt, static_cfg: StaticConfig,
 def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -838,7 +826,7 @@ def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
 def _get_Pb1L_2(P, X_lpt, static_cfg: StaticConfig,
                   k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                   id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window, C_window=None):
+                  P_window=None, C_window=None):
     Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
@@ -931,8 +919,9 @@ def J_k_tensor(P, X, static_cfg: StaticConfig,
         P_b2 = P * k_extrap ** (-nu2_i)
         
         if P_window is not None:
-            P_b1 = P_b1 * P_window
-            P_b2 = P_b2 * P_window
+            W = p_window(k_extrap, P_window[0], P_window[1])
+            P_b1 = P_b1 * W
+            P_b2 = P_b2 * W
             
         if static_cfg.n_pad > 0:
             P_b1 = jnp.pad(P_b1, pad_width=(static_cfg.n_pad, static_cfg.n_pad), mode='constant', constant_values=0)
