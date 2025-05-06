@@ -211,7 +211,9 @@ class JAXPT:
             "Pb2L_2": {"type": "special", "method": "_get_Pb2L_2", "X": "X_lpt"},
             
             "P_d2tE": {"type": "special", "method": "_get_P_d2tE", "X": ["X_IA_gb2_F2", "X_IA_gb2_G2"]},
-            "P_s2tE": {"type": "special", "method": "_get_P_s2tE", "X": ["X_IA_gb2_S2F2", "X_IA_gb2_S2G2"]}
+            "P_s2tE": {"type": "special", "method": "_get_P_s2tE", "X": ["X_IA_gb2_S2F2", "X_IA_gb2_S2G2"]},
+
+            "P_OV": {"type": "special", "method": "_get_OV", "X": "X_OV"},
         }
 
         self.term_groups = {
@@ -359,6 +361,16 @@ class JAXPT:
             _ = globals()[func_name](dummy_P_for_transforms, self.X_lpt, self._static_config, 
                                     self.k_extrap, self.k_final, self.id_pad, self.l, self.m, 
                                     P_window=p_window_array, C_window=c_window_value)
+
+        # Warm up OV
+        _ = globals()['_get_OV'](dummy_P_for_transforms, self.X_OV, 
+                                self._static_config, self.k_extrap, self.k_final, 
+                                self.id_pad, self.l, self.m, 
+                                P_window=None, C_window=None)
+        _ = globals()['_get_OV'](dummy_P_for_transforms, self.X_OV, 
+                                self._static_config, self.k_extrap, self.k_final, 
+                                self.id_pad, self.l, self.m, 
+                                P_window=p_window_array, C_window=c_window_value)
 
         # Special cases with list-based X parameters
         special_funcs = [
@@ -534,13 +546,8 @@ class JAXPT:
     def gI_tt(self, P, P_window=None, C_window=None):
         return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_tt"])
 
-    ## TODO it might make the most sense to move OV out of the class as it is its own calculation function
-    # def OV(self, P, C_window=None):
-    #     P, A = jit_JK_tensor(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
-    #                      P_window=P_window, C_window=C_window)
-    #     P = _apply_extrapolation(P)
-    #     P_OV = P * (2 * jnp.pi) ** 2
-    #     return P_OV
+    def OV(self, P, C_window=None):
+        return self.get("P_OV", P, C_window=C_window)
 
     def IA_der(self, P):
         return (self.k_original**2)*P
@@ -615,14 +622,6 @@ class JAXPT:
                 
         raise ValueError(f"Unable to process term: {term}")
 
-
-# @dataclass(frozen=True)
-# class ComputeConfig:
-#     k_extrap: jnp.ndarray
-#     k_final: jnp.ndarray
-#     id_pad: jnp.ndarray
-#     l: jnp.ndarray
-#     m: jnp.ndarray
 
 @dataclass(frozen=True)
 class StaticConfig:
@@ -932,6 +931,17 @@ def _get_P_0tE(P, X_list, static_cfg: StaticConfig,
     P_0tE = P_22G-P_22F+P_13G-P_13F
     P_0tE = 2*P_0tE
     return P_0tE
+
+@partial(jit, static_argnames=["static_cfg"])
+def _get_OV(P, X_OV, static_cfg: StaticConfig,
+               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
+               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
+               P_window=None, C_window=None):
+    P, _ = J_k_tensor(P, X_OV, static_cfg, k_extrap, k_final, id_pad, l, m,
+                           P_window=P_window, C_window=C_window)
+    P = _apply_extrapolation(P, EK=static_cfg.EK)
+    P_OV = P * (2 * jnp.pi) ** 2
+    return P_OV
 
 @partial(jit, static_argnames=["static_cfg"])
 def _get_sig3nl(P, X_spt, static_cfg: StaticConfig,
