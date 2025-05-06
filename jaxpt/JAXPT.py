@@ -239,17 +239,15 @@ class JAXPT:
 
         #JIT Compile functions
         try:
-            self.J_k_scalar = jit(self.J_k_scalar, static_argnames=["n_pad", "k_size", "EK",
-                                                                     "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
+            self.J_k_scalar = jit(self.J_k_scalar, static_argnames=["n_pad", "k_size", "EK", "low_extrap", "high_extrap"])
         except:
             print("J_k_scalar JIT compilation failed. Using default python implementation.")
         try:
-            self._J_k_tensor_core = jit(self.J_k_tensor, static_argnames=["n_pad", "k_size", "EK",
-                                                                          "N", "l", "id_pad", "k_extrap", "k_final", "low_extrap", "high_extrap"])
+            self._J_k_tensor_core = jit(self.J_k_tensor, static_argnames=["n_pad", "k_size", "EK", "low_extrap", "high_extrap"])
         except:
             print("J_k_tensor JIT compilation failed. Using default python implementation.")
         try:
-            self.fourier_coefficients = jit(self.fourier_coefficients, static_argnames=["N"])
+            self.fourier_coefficients = jit(self.fourier_coefficients)
         except:
             print("fourier_coefficients JIT compilation failed. Using default python implementation.")
         try:
