@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, vjp, jvp
 import numpy as np
 from jax import config
 import jax
@@ -621,6 +621,198 @@ class JAXPT:
             return result
                 
         raise ValueError(f"Unable to process term: {term}")
+    
+
+    def vjp_get(self, term, P, P_window=None, C_window=None, tangent_type='ones', tangent_vector=None, seed=42):
+        """
+        Compute vector-Jacobian product (gradient) of the requested term with respect to input P.
+        
+        Parameters:
+        -----------
+        term : str
+            Term or group name to compute
+        P : array
+            Input power spectrum
+        P_window, C_window : optional
+            Window parameters
+        tangent_type : str, optional
+            Type of tangent vector to use for gradient computation:
+            - 'ones': Use vector of ones (gradient of sum of outputs)
+            - 'random': Use random normal vector (explore random direction in output space)
+            - 'custom': Use provided tangent_vector
+            - 'unit_i': Use unit vector for single component (i provided in tangent_vector)
+            - 'normalized': Ones vector normalized by output size (for scale-invariant gradients)
+        tangent_vector : array_like, optional
+            Custom tangent vector or index parameter depending on tangent_type
+        seed : int, optional
+            Random seed when tangent_type='random'
+            
+        Returns:
+        --------
+        tuple: (result, gradient)
+            - result: The output of the term computation
+            - gradient: The gradient of the term with respect to P
+        """
+        def get_wrt_P(P):
+            return self.get(term, P, P_window=P_window, C_window=C_window)
+        
+        result, vjp_function = vjp(get_wrt_P, P)
+        
+        if tangent_type == 'ones':
+            # BENEFIT: Simple gradient of sum - useful for overall sensitivity analysis
+            # and when optimizing the total value across all output elements
+            if isinstance(result, tuple):
+                tangent = tuple(jnp.ones_like(r) for r in result)
+            else:
+                tangent = jnp.ones_like(result)
+        
+        elif tangent_type == 'random':
+            # BENEFIT: Explores random directions in gradient space - excellent for
+            # detecting numerical instabilities and testing overall differentiability
+            key = jax.random.PRNGKey(seed)
+            if isinstance(result, tuple):
+                keys = jax.random.split(key, len(result))
+                tangent = tuple(jax.random.normal(k, r.shape) for k, r in zip(keys, result))
+            else:
+                tangent = jax.random.normal(key, result.shape)
+        
+        elif tangent_type == 'custom':
+            # BENEFIT: Allows exploring specific physics directions or
+            # targeting particular features in spectral space
+            if tangent_vector is None:
+                raise ValueError("tangent_vector must be provided when tangent_type='custom'")
+            tangent = tangent_vector
+        
+        elif tangent_type == 'unit_i':
+            # BENEFIT: Computes gradient for a single output element - useful for
+            # understanding how specific spectral regions are influenced
+            if tangent_vector is None:
+                raise ValueError("tangent_vector (index) must be provided when tangent_type='unit_i'")
+            
+            if isinstance(result, tuple):
+                # For tuple outputs, tangent_vector should be a tuple of (tuple_index, element_index)
+                tuple_idx, element_idx = tangent_vector
+                tangent = tuple(jnp.zeros_like(r) for r in result)
+                # Create a one-hot vector for the specified element
+                unit_vec = jnp.zeros_like(result[tuple_idx])
+                unit_vec = unit_vec.at[element_idx].set(1.0)
+                # Replace the zeros at tuple_idx with the one-hot vector
+                tangent = list(tangent)
+                tangent[tuple_idx] = unit_vec
+                tangent = tuple(tangent)
+            else:
+                # For single array output, tangent_vector is the index
+                unit_vec = jnp.zeros_like(result)
+                unit_vec = unit_vec.at[tangent_vector].set(1.0)
+                tangent = unit_vec
+        
+        elif tangent_type == 'normalized':
+            # BENEFIT: Scale-invariant gradients - especially important when comparing
+            # sensitivity across different terms with varying output sizes
+            if isinstance(result, tuple):
+                tangent = tuple(jnp.ones_like(r) / jnp.prod(jnp.array(r.shape)) for r in result)
+            else:
+                tangent = jnp.ones_like(result) / jnp.prod(jnp.array(result.shape))
+        
+        else:
+            raise ValueError(f"Unknown tangent_type: {tangent_type}")
+        
+        gradient = vjp_function(tangent)
+        
+        return result, gradient[0]  # [0] because vjp_fn returns a tuple of gradients (in this case there's only one element)
+
+    def jvp_get(self, term, P, tangent_P=None, P_window=None, C_window=None, 
+                tangent_type='custom', tangent_params=None, scaling=1.0, seed=42):
+        """
+        Compute Jacobian-vector product (directional derivative) of the requested term 
+        with respect to a perturbation of input P in the direction of tangent_P.
+        
+        Parameters:
+        -----------
+        term : str
+            Term or group name to compute
+        P : array
+            Input power spectrum
+        tangent_P : array, optional
+            Custom tangent vector specifying direction in input space
+        P_window, C_window : optional
+            Window parameters
+        tangent_type : str, optional
+            Type of tangent vector to use:
+            - 'custom': Use provided tangent_P (default)
+            - 'random': Use random normal vector to explore sensitivity across frequencies
+            - 'unit_i': Use unit vector for single component to test sensitivity to a specific k bin
+            - 'sinusoidal': Use sinusoidal perturbation to test frequency-dependent response
+            - 'gaussian': Use gaussian perturbation to test localized response
+        tangent_params : dict or int, optional
+            Parameters for specialized tangent vectors:
+            - For 'unit_i': Index of element to perturb
+            - For 'sinusoidal': {'amplitude': float, 'frequency': float, 'phase': float}
+            - For 'gaussian': {'center': float, 'width': float, 'amplitude': float}
+            - Common: {'normalize': bool} to normalize the tangent vector
+        scaling : float, optional
+            Scaling factor for the tangent vector
+        seed : int, optional
+            Random seed when tangent_type='random'
+            
+        Returns:
+        --------
+        tuple: (result, jvp_value, tangent_P)
+            - result: The output of the term computation
+            - jvp_value: The directional derivative in the direction of tangent_P
+            - tangent_P: The actual tangent vector used (useful for auto-generated tangents)
+        """
+        # Prepare the function to differentiate
+        def get_wrt_P(P):
+            return self.get(term, P, P_window=P_window, C_window=C_window)
+        
+        # Create the tangent vector based on tangent_type
+        if tangent_type == 'custom':
+            if tangent_P is None:
+                raise ValueError("tangent_P must be provided when tangent_type='custom'")
+        elif tangent_type == 'random':
+            key = jax.random.PRNGKey(seed)
+            tangent_P = jax.random.normal(key, P.shape)
+        elif tangent_type == 'unit_i':
+            if not isinstance(tangent_params, int):
+                raise ValueError("tangent_params must be an integer index when tangent_type='unit_i'")
+            tangent_P = jnp.zeros_like(P)
+            tangent_P = tangent_P.at[tangent_params].set(1.0)
+        elif tangent_type == 'sinusoidal':
+            if tangent_params is None:
+                tangent_params = {'amplitude': 1.0, 'frequency': 5.0/len(P), 'phase': 0.0}
+            k_indices = jnp.arange(len(P))
+            amplitude = tangent_params.get('amplitude', 1.0)
+            frequency = tangent_params.get('frequency', 5.0/len(P))
+            phase = tangent_params.get('phase', 0.0)
+            tangent_P = amplitude * jnp.sin(frequency * k_indices + phase)
+        elif tangent_type == 'gaussian':
+            if tangent_params is None:
+                tangent_params = {'center': len(P)//2, 'width': len(P)/10, 'amplitude': 1.0}
+            k_indices = jnp.arange(len(P))
+            center = tangent_params.get('center', len(P)//2)
+            width = tangent_params.get('width', len(P)/10)
+            amplitude = tangent_params.get('amplitude', 1.0)
+            tangent_P = amplitude * jnp.exp(-((k_indices - center) / width) ** 2)
+        else:
+            raise ValueError(f"Unknown tangent_type: {tangent_type}")
+        
+        # Normalize tangent vector if requested
+        if isinstance(tangent_params, dict) and tangent_params.get('normalize', False):
+            norm = jnp.linalg.norm(tangent_P)
+            # Avoid division by zero
+            tangent_P = jnp.where(norm > 0, tangent_P / norm, tangent_P)
+        
+        # Apply scaling
+        tangent_P = scaling * tangent_P
+        
+        # Compute the JVP
+        result, jvp_value = jvp(get_wrt_P, (P,), (tangent_P,))
+        
+        return result, jvp_value, tangent_P
+
+
+    #scalar method? (maybe input some operation to apply to the pk that needs to be minimized or maximized)
 
 
 @dataclass(frozen=True)
