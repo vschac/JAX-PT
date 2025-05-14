@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jit, vjp, jvp
+from jax import jit, vjp, jvp, jacfwd
 import numpy as np
 from jax import config
 import jax
@@ -810,10 +810,91 @@ class JAXPT:
         result, jvp_value = jvp(get_wrt_P, (P,), (tangent_P,))
         
         return result, jvp_value, tangent_P
+    
+    def diff(self, config):
+        """
+        Main differentiation interface that delegates to appropriate differentiation methods
+        based on the provided configuration.
+        
+        Parameters:
+        -----------
+        config : DiffConfigDC
+            Validated configuration object with all differentiation parameters
+            
+        Returns:
+        --------
+        The result of the differentiation operation as specified by the configuration
+        """        
 
+        # This method of callable func and a set of params may not entirely work for other implementations, will have to see later
+        power_spectra_func, callable_params = self._generate_power_spectrum(
+            method=config.pk_generation_method,
+            params=config.pk_params
+        )
 
-    #scalar method? (maybe input some operation to apply to the pk that needs to be minimized or maximized)
+        # Determine which term/function to differentiate
+        if config.term is not None:
+            jpt_func = self.get
+            jpt_params = {"term":config.term, "P_window":config.P_window, "C_window":config.C_window}
+        else:
+            jpt_func = getattr(self, config.function)
+            jpt_params = {"P_window":config.P_window, "C_window":config.C_window}
+        
+        # Choose the differentiation approach based on config
+        if config.diff_type == 'vector':
+            return self._vector_diff(
+                power_spectra_func,
+                callable_params,
+                jpt_func,
+                jpt_params,
+                diff_param=config.pk_diff_param,
+                method=config.diff_method,
+                tangent=config.tangent,
+            )
+        else:  # scalar differentiation
+            return self._scalar_diff(
+                power_spectra_func,
+                callable_params,
+                jpt_func,
+                jpt_params,
+                diff_param=config.pk_diff_param,
+                method=config.diff_method,
+                reduction_func=config.reduction_func,
+            )
+        
+    def _generate_power_spectrum(self, method, params):
+        if method == 'jax-cosmo':
+            return self._create_jax_cosmo(params)
+        else:
+            raise ValueError(f"Unsupported power spectrum generation method: {method}")
 
+    def _create_jax_cosmo(self, params):
+        """Create a jax-cosmo cosmology object from parameters dictionary."""
+        from jax_cosmo import Cosmology, power
+        
+        cosmo = Cosmology(
+            Omega_c=params.get('Omega_c', 0.12),
+            Omega_b=params.get('Omega_b', 0.022),
+            h=params.get('h', 0.69),
+            n_s=params.get('n_s', 0.96),
+            sigma8=params.get('sigma8', 0.8),
+            Omega_k=params.get('Omega_k', 0.0),
+            w0=params.get('w0', -1.0),
+            wa=params.get('wa', 0.0)
+        )
+        return power.linear_matter_power, cosmo
+
+    def _vector_diff(self, P_func, P_params, jpt_func, jpt_params, diff_param, method, tangent=None):
+        # These methods need delegate the proper jvp or jacfwd and provide a tanget if needed
+        # The jpt function and params and power spectra function and params are passed into it and should be ready to go
+        # setup a function that only takes in the diff param
+        pass
+        
+    def _scalar_diff(self, P_func, P_params, target, target_type, diff_param, method, reduction_func=None):
+
+        # Placeholder for the actual implementation
+        pass
+        
 
 @dataclass(frozen=True)
 class StaticConfig:
@@ -1286,3 +1367,26 @@ def convolution(c1, c2, g_m, g_n, h_l, two_part_l=None):
         C_l = C_l * h_l
 
     return C_l
+
+from memory_profiler import profile
+
+@profile
+def create_jaxpt():
+    k = jnp.logspace(-3, 1, 1000)
+    return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
+
+if __name__ == "__main__":
+    jpt = create_jaxpt()
+    # k=jnp.logspace(-3, 1, 1000)
+    # jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
+    # result, gradient = jpt.deriv_wrt_h(0.7, 'P_1loop')
+    
+    # import matplotlib.pyplot as plt
+    # plt.plot(k, result, label='Result')
+    # plt.plot(k, gradient, label='Gradient')
+    # plt.xscale('log')
+    # plt.yscale('log')
+    # plt.xlabel('k')
+    # plt.ylabel('Value')
+    # plt.legend()
+    # plt.show()
