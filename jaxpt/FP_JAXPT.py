@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jit, vjp, jvp, jacfwd
+from jax import jit, vjp, jvp, jacfwd, grad
 import numpy as np
 from jax import config
 import jax
@@ -826,74 +826,134 @@ class JAXPT:
         The result of the differentiation operation as specified by the configuration
         """        
 
-        # This method of callable func and a set of params may not entirely work for other implementations, will have to see later
-        power_spectra_func, callable_params = self._generate_power_spectrum(
-            method=config.pk_generation_method,
-            params=config.pk_params
-        )
-
-        # Determine which term/function to differentiate
         if config.term is not None:
-            jpt_func = self.get
-            jpt_params = {"term":config.term, "P_window":config.P_window, "C_window":config.C_window}
+            jpt_func = functools.partial(self.get, term=config.term)
         else:
             jpt_func = getattr(self, config.function)
-            jpt_params = {"P_window":config.P_window, "C_window":config.C_window}
+            
+        jpt_params = {"P_window":config.P_window, "C_window":config.C_window}
         
-        # Choose the differentiation approach based on config
         if config.diff_type == 'vector':
             return self._vector_diff(
-                power_spectra_func,
-                callable_params,
-                jpt_func,
-                jpt_params,
+                pk_method=config.pk_generation_method,
+                P_params=config.pk_params,
+                jpt_func=jpt_func,
+                jpt_params=jpt_params,
                 diff_param=config.pk_diff_param,
-                method=config.diff_method,
+                diff_method=config.diff_method,
                 tangent=config.tangent,
             )
         else:  # scalar differentiation
             return self._scalar_diff(
-                power_spectra_func,
-                callable_params,
-                jpt_func,
-                jpt_params,
+                pk_method=config.pk_generation_method,
+                P_params=config.pk_params,
+                jpt_func=jpt_func,
+                jpt_params=jpt_params,
                 diff_param=config.pk_diff_param,
-                method=config.diff_method,
+                diff_method=config.diff_method,
                 reduction_func=config.reduction_func,
             )
         
-    def _generate_power_spectrum(self, method, params):
-        if method == 'jax-cosmo':
-            return self._create_jax_cosmo(params)
+    def _pk_generator(self, pk_method, param_value, diff_param, P_params):
+        if pk_method == 'jax-cosmo':
+            return self._jax_cosmo_pk_generator(param_value, diff_param, P_params)
         else:
-            raise ValueError(f"Unsupported power spectrum generation method: {method}")
+            raise ValueError(f"Unsupported power spectrum generation method: {pk_method}")
 
-    def _create_jax_cosmo(self, params):
-        """Create a jax-cosmo cosmology object from parameters dictionary."""
+    def _jax_cosmo_pk_generator(self, param_value, diff_param, P_params):
+        """Generate power spectrum using jax-cosmo"""
         from jax_cosmo import Cosmology, power
         
-        cosmo = Cosmology(
-            Omega_c=params.get('Omega_c', 0.12),
-            Omega_b=params.get('Omega_b', 0.022),
-            h=params.get('h', 0.69),
-            n_s=params.get('n_s', 0.96),
-            sigma8=params.get('sigma8', 0.8),
-            Omega_k=params.get('Omega_k', 0.0),
-            w0=params.get('w0', -1.0),
-            wa=params.get('wa', 0.0)
-        )
-        return power.linear_matter_power, cosmo
-
-    def _vector_diff(self, P_func, P_params, jpt_func, jpt_params, diff_param, method, tangent=None):
-        # These methods need delegate the proper jvp or jacfwd and provide a tanget if needed
-        # The jpt function and params and power spectra function and params are passed into it and should be ready to go
-        # setup a function that only takes in the diff param
-        pass
+        cosmo_dict = {
+            'Omega_c': P_params['Omega_c'],
+            'Omega_b': P_params['Omega_b'],
+            'h': P_params['h'],
+            'n_s': P_params['n_s'],
+            'sigma8': P_params['sigma8'],
+            'Omega_k': P_params['Omega_k'],
+            'w0': P_params['w0'],
+            'wa': P_params['wa'],
+        }
         
-    def _scalar_diff(self, P_func, P_params, target, target_type, diff_param, method, reduction_func=None):
+        # Explicitly use the differentiation parameter
+        cosmo_dict[diff_param] = param_value
+        new_cosmo = Cosmology(**cosmo_dict)
+        return power.linear_matter_power(new_cosmo, self.k_original)
 
-        # Placeholder for the actual implementation
-        pass
+    def _vector_diff(self, pk_method, P_params, jpt_func, jpt_params, diff_param, diff_method, tangent=None):
+        
+        current_value = P_params[diff_param]
+        current_value = jnp.array(current_value, dtype=jnp.float64)
+
+        if diff_method == 'jacfwd':
+            def diff_func(param_value):
+                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
+                return jpt_func(P=power_spectrum, **jpt_params)
+            
+            # Now differentiate with respect to the actual parameter value
+            result = jacfwd(diff_func)(current_value)
+            return result
+        
+        elif diff_method == 'jvp':
+            def diff_func(param_value):
+                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
+                return jpt_func(P=power_spectrum, **jpt_params)
+            
+            if tangent is None:
+                # Default: use a scalar value of 1.0 for cosmological parameter differentiation
+                tangent = jnp.array(1.0, dtype=jnp.float64)
+            else:
+                tangent = jnp.array(tangent, dtype=jnp.float64)
+            
+            primal_out, jvp_result = jvp(diff_func, (current_value,), (tangent,))
+            # Should primals be returned as well? Or removed to keep the ouput consistent?
+            return primal_out, jvp_result
+
+        
+    def _scalar_diff(self, pk_method, P_params, jpt_func, jpt_params, diff_param, diff_method, reduction_func=None):
+        current_value = P_params[diff_param]
+        current_value = jnp.array(current_value, dtype=jnp.float64)
+        
+        if diff_method == 'vjp':
+            def diff_func(param_value):
+                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
+                result = jpt_func(P=power_spectrum, **jpt_params)
+                
+                # If a reduction function is provided, apply it to get a scalar output
+                if reduction_func is not None:
+                    return reduction_func(result)
+                return result
+            
+            primal_out, vjp_fn = vjp(diff_func, current_value)
+            
+            if reduction_func is not None:
+                # For scalar output, use tangent=1.0
+                gradient = vjp_fn(jnp.array(1.0))[0]
+            else:
+                # For vector output, use vector of ones as tangent
+                tangent = jnp.ones_like(primal_out)
+                gradient = vjp_fn(tangent)[0]
+            
+            return primal_out, gradient
+        
+        elif diff_method == 'grad':
+            if reduction_func is None:
+                raise ValueError("reduction_func must be provided when using 'grad' method")
+            
+            def diff_func(param_value):
+                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
+                result = jpt_func(P=power_spectrum, **jpt_params)
+                # Apply reduction to get scalar output for grad
+                return reduction_func(result)
+            
+            grad_fn = grad(diff_func)
+            
+            gradient = grad_fn(current_value)
+            
+            return gradient
+        
+        else:
+            raise ValueError(f"Unsupported scalar differentiation method: {diff_method}")
         
 
 @dataclass(frozen=True)
@@ -1376,17 +1436,104 @@ def create_jaxpt():
     return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
 
 if __name__ == "__main__":
-    jpt = create_jaxpt()
-    # k=jnp.logspace(-3, 1, 1000)
-    # jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
-    # result, gradient = jpt.deriv_wrt_h(0.7, 'P_1loop')
-    
-    # import matplotlib.pyplot as plt
-    # plt.plot(k, result, label='Result')
-    # plt.plot(k, gradient, label='Gradient')
-    # plt.xscale('log')
-    # plt.yscale('log')
-    # plt.xlabel('k')
-    # plt.ylabel('Value')
-    # plt.legend()
-    # plt.show()
+    # jpt = create_jaxpt() # << For memory profiler
+
+    k = jnp.logspace(-3, 1, 1000)
+    jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
+    from jaxpt.diff_config import DiffConfig
+    import matplotlib.pyplot as plt
+    import jax.numpy as jnp
+
+    # Example 1: Vector output - needs to use jacfwd with vector diff_type
+    config_vector = DiffConfig()
+    config_vector.pk_diff_param = 'h'
+    config_vector.diff_method = 'jacfwd'  # Changed from 'vjp'
+    config_vector.diff_type = 'vector'    # Changed from 'scalar'
+    config_vector.tangent = None
+    config_vector.reduction_func = None
+
+    diff_config_vector = config_vector.build_and_validate()
+    gradient_vector = jpt.diff(diff_config_vector)  # Will be shape (1000,) - one gradient per k-bin
+
+    # Get the power spectrum itself for plotting (not the gradient)
+    power_config = DiffConfig()
+    power_config.term = 'P_1loop'
+    power_config_valid = power_config.build_and_validate()
+    power_spectrum = jpt.get(power_config_valid.term, 
+                            jpt._pk_generator('jax-cosmo', 
+                                            config_vector.pk_params[config_vector.pk_diff_param], 
+                                            config_vector.pk_diff_param, 
+                                            config_vector.pk_params))
+
+    # Example 2: Scalar output - weighted power integral
+    def power_integral(P):
+        """Integration of power spectrum weighted by k - physical meaning:
+        total variance of fluctuations (with k-weighting)"""
+        return jnp.sum(P * k)
+
+    config_scalar1 = DiffConfig()
+    config_scalar1.pk_diff_param = 'h' 
+    config_scalar1.diff_method = 'vjp'
+    config_scalar1.diff_type = 'scalar'
+    config_scalar1.reduction_func = power_integral
+
+    diff_config_scalar1 = config_scalar1.build_and_validate()
+    scalar_value1, scalar_gradient1 = jpt.diff(diff_config_scalar1)
+
+    # Example 3: Scalar output - σ8-like measure
+    def sigma8_like(P):
+        """Simplified σ8-like measure - physical meaning:
+        amplitude of matter fluctuations at scale R"""
+        # Simple filter function centered at k=0.2 h/Mpc
+        filter_func = jnp.exp(-((jnp.log10(k) - jnp.log10(0.2))**2) / 0.5)
+        return jnp.sqrt(jnp.sum(P * filter_func))
+
+    config_scalar2 = DiffConfig()
+    config_scalar2.pk_diff_param = 'h'
+    config_scalar2.diff_method = 'vjp'
+    config_scalar2.diff_type = 'scalar'
+    config_scalar2.reduction_func = sigma8_like
+
+    diff_config_scalar2 = config_scalar2.build_and_validate()
+    scalar_value2, scalar_gradient2 = jpt.diff(diff_config_scalar2)
+
+    # Print scalar results
+    print(f"\nScalar Output Results:")
+    print(f"1. Power Integral: {scalar_value1:.6e}")
+    print(f"   Gradient dF/dh: {scalar_gradient1:.6e}")
+    print(f"   Physical meaning: How the total power changes with h")
+    print(f"\n2. σ8-like Measure: {scalar_value2:.6e}")
+    print(f"   Gradient dσ8/dh: {scalar_gradient2:.6e}")
+    print(f"   Physical meaning: How the clustering amplitude changes with h")
+
+    # Visualization
+    plt.figure(figsize=(12, 10))
+
+    # Plot power spectrum and its gradient
+    plt.subplot(3, 1, 1)
+    plt.plot(k, power_spectrum, label='P(k) - Power Spectrum')
+    plt.plot(k, gradient_vector, label='dP(k)/dh - Gradient')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.title('Vector Output: Power Spectrum and its Gradient')
+    plt.legend()
+
+    # Plot contribution to first scalar gradient
+    plt.subplot(3, 1, 2)
+    # The VJP applies the chain rule using k weights when calculating the gradient
+    contribution1 = k * gradient_vector / jnp.sum(k * gradient_vector) * scalar_gradient1
+    plt.plot(k, contribution1)
+    plt.xscale('log')
+    plt.title(f'Contribution to Power Integral Gradient (dF/dh = {scalar_gradient1:.6e})')
+
+    # Plot contribution to second scalar gradient
+    plt.subplot(3, 1, 3)
+    filter_func = jnp.exp(-((jnp.log10(k) - jnp.log10(0.2))**2) / 0.5)
+    # The VJP applies chain rule using the filter function when calculating the gradient
+    contribution2 = filter_func * gradient_vector / jnp.sum(filter_func * gradient_vector) * scalar_gradient2
+    plt.plot(k, contribution2)
+    plt.xscale('log')
+    plt.title(f'Contribution to σ8-like Gradient (dσ8/dh = {scalar_gradient2:.6e})')
+
+    plt.tight_layout()
+    plt.show()
