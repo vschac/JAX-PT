@@ -33,13 +33,24 @@ class DiffConfig:
 
     def build_and_validate(self):
         # Pk generation validation
-        if self.pk_generation_method not in ['jax-cosmo',]:
+        if self.pk_generation_method not in ['jax-cosmo', 'discoeb']:
             raise ValueError("Invalid pk_generation_method. Supported methods: ['jax-cosmo']")
-        jax_comso_params = ('Omega_c', 'Omega_b', 'h', 'n_s', 'sigma8', 'Omega_k', 'w0', 'wa')
-        if not all(param in jax_comso_params for param in self.pk_params.keys()):
-            raise ValueError(f"Invalid pk_params. Supported params: {jax_comso_params}")
-        if self.pk_diff_param not in jax_comso_params:
-            raise ValueError(f"Invalid pk_diff_param. Supported params: {jax_comso_params}")
+        # Check is pk params is empty
+        if not self.pk_params:
+            raise ValueError("pk_params cannot be empty. Please provide a dictionary of parameters.")
+        if self.pk_generation_method == 'jax-cosmo':
+            jax_comso_params = ('Omega_c', 'Omega_b', 'h', 'n_s', 'sigma8', 'Omega_k', 'w0', 'wa')
+            if not any(param in jax_comso_params for param in self.pk_params.keys()):
+                raise ValueError(f"Invalid pk_params. Supported params: {jax_comso_params}")
+            if self.pk_diff_param not in jax_comso_params:
+                raise ValueError(f"Invalid pk_diff_param. Supported params: {jax_comso_params}")
+        elif self.pk_generation_method == 'discoeb':
+            discoeb_params = ('Omegam', 'Omegab', 'w_DE_0', 'w_DE_a', 'cs2_DE', 'Omegak', 'A_s', 'n_s', 'H0', 'Tcmb', 'YHe', 'Neff', 'Nmnu', 'mnu', 'k_p')
+            if not any(param in discoeb_params for param in self.pk_params.keys()):
+                raise ValueError(f"Invalid pk_params. Supported params: {discoeb_params}")
+            if self.pk_diff_param not in discoeb_params:
+                raise ValueError(f"Invalid pk_diff_param. Supported params: {discoeb_params}")
+        
 
         # Jax-PT terms/functions validation
         valid_terms = [

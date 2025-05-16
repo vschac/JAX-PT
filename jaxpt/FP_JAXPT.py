@@ -857,6 +857,8 @@ class JAXPT:
     def _pk_generator(self, pk_method, param_value, diff_param, P_params):
         if pk_method == 'jax-cosmo':
             return self._jax_cosmo_pk_generator(param_value, diff_param, P_params)
+        elif pk_method == 'discoeb':
+            return self._discoeb_pk_generator(param_value, diff_param, P_params)
         else:
             raise ValueError(f"Unsupported power spectrum generation method: {pk_method}")
 
@@ -879,7 +881,59 @@ class JAXPT:
         cosmo_dict[diff_param] = param_value
         new_cosmo = Cosmology(**cosmo_dict)
         return power.linear_matter_power(new_cosmo, self.k_original)
+    
+    def get_filter_jit():
+        """Lazily import equinox.filter_jit only when needed."""
+        import equinox
+        return equinox.filter_jit
 
+    @get_filter_jit()
+    def _discoeb_pk_generator(self, param_value, diff_param, P_params):
+        from discoeb.background import evolve_background
+        from discoeb.perturbations import evolve_perturbations, get_power
+        
+        cosmo_dict = {
+            'Omegam'  : P_params.get('Omegam', 0.3099),            # Total matter density parameter
+            'Omegab'  : P_params.get('Omegab', 0.0488911),         # Baryon density parameter
+            'w_DE_0'  : P_params.get('w_DE_0', -0.99),             # Dark energy equation of state parameter today
+            'w_DE_a'  : P_params.get('w_DE_a', 0.0),              # Dark energy equation of state parameter time derivative
+            'cs2_DE'  : P_params.get('cs2_DE', 1.0),               # Dark energy sound speed squared
+            'Omegak'  : P_params.get('Omegak', 0.0),             # Curvature density parameter
+            'A_s'     : P_params.get('A_s', 2.1e-9),        # Scalar amplitude of the primordial power spectrum
+            'n_s'     : P_params.get('n_s', 0.96822),           # Scalar spectral index
+            'H0'      : P_params.get('H0', 67.742),            # Hubble constant today in units of 100 km/s/Mpc
+            'Tcmb'    : P_params.get('Tcmb', 2.7255),            # CMB temperature today in K
+            'YHe'     : P_params.get('YHe', 0.248),             # Helium mass fraction
+            'Neff'    : P_params.get('Neff', 2.046),             # Effective number of ultrarelativistic neutrinos
+                                                        # -1 if massive neutrino present
+            'Nmnu'    : P_params.get('Nmnu', 1),                # Number of massive neutrinos (must be 1 currently)
+            'mnu'     : P_params.get('mnu', 0.06),              # Sum of neutrino masses in eV 
+            'k_p'     : P_params.get('k_p', 0.05),              # Pivot scale in 1/Mpc
+            }
+        cosmo_dict[diff_param] = param_value
+        #### This code comes directly from the discoeb example notebook ####
+
+        # modes to sample
+        nmodes = 512                         # number of modes to sample
+        kmin   = jnp.min(self.k_original)                        # minimum k in 1/Mpc
+        kmax   = jnp.max(self.k_original)                          # maximum k in 1/Mpc
+        aexp   = 1.0                         # scale factor at which to evaluate the power spectrum
+        
+        ## Compute Background+thermal evolution
+        param = evolve_background(param=cosmo_dict, thermo_module='RECFAST')
+
+        # compute perturbation evolution
+        aexp_out = jnp.array([aexp])
+        # jax.profiler.start_trace("/tmp/tensorboard")
+        y, kmodes = evolve_perturbations( param=param, kmin=kmin, kmax=kmax, num_k=nmodes, aexp_out=aexp_out, 
+                                            rtol=1e-3, atol=1e-3 , 
+                                        )
+        # jax.profiler.stop_trace()
+        # turn perturbations into power spectra
+        Pkm = get_power( k=kmodes, y=y[:,0,:], idx=4, param=param )
+
+        return Pkm
+    
     def _vector_diff(self, pk_method, P_params, jpt_func, jpt_params, diff_param, diff_method, tangent=None):
         
         current_value = P_params[diff_param]
@@ -1444,96 +1498,18 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import jax.numpy as jnp
 
-    # Example 1: Vector output - needs to use jacfwd with vector diff_type
-    config_vector = DiffConfig()
-    config_vector.pk_diff_param = 'h'
-    config_vector.diff_method = 'jacfwd'  # Changed from 'vjp'
-    config_vector.diff_type = 'vector'    # Changed from 'scalar'
-    config_vector.tangent = None
-    config_vector.reduction_func = None
-
-    diff_config_vector = config_vector.build_and_validate()
-    gradient_vector = jpt.diff(diff_config_vector)  # Will be shape (1000,) - one gradient per k-bin
-
-    # Get the power spectrum itself for plotting (not the gradient)
-    power_config = DiffConfig()
-    power_config.term = 'P_1loop'
-    power_config_valid = power_config.build_and_validate()
-    power_spectrum = jpt.get(power_config_valid.term, 
-                            jpt._pk_generator('jax-cosmo', 
-                                            config_vector.pk_params[config_vector.pk_diff_param], 
-                                            config_vector.pk_diff_param, 
-                                            config_vector.pk_params))
-
-    # Example 2: Scalar output - weighted power integral
-    def power_integral(P):
-        """Integration of power spectrum weighted by k - physical meaning:
-        total variance of fluctuations (with k-weighting)"""
-        return jnp.sum(P * k)
-
-    config_scalar1 = DiffConfig()
-    config_scalar1.pk_diff_param = 'h' 
-    config_scalar1.diff_method = 'vjp'
-    config_scalar1.diff_type = 'scalar'
-    config_scalar1.reduction_func = power_integral
-
-    diff_config_scalar1 = config_scalar1.build_and_validate()
-    scalar_value1, scalar_gradient1 = jpt.diff(diff_config_scalar1)
-
-    # Example 3: Scalar output - σ8-like measure
-    def sigma8_like(P):
-        """Simplified σ8-like measure - physical meaning:
-        amplitude of matter fluctuations at scale R"""
-        # Simple filter function centered at k=0.2 h/Mpc
-        filter_func = jnp.exp(-((jnp.log10(k) - jnp.log10(0.2))**2) / 0.5)
-        return jnp.sqrt(jnp.sum(P * filter_func))
-
-    config_scalar2 = DiffConfig()
-    config_scalar2.pk_diff_param = 'h'
-    config_scalar2.diff_method = 'vjp'
-    config_scalar2.diff_type = 'scalar'
-    config_scalar2.reduction_func = sigma8_like
-
-    diff_config_scalar2 = config_scalar2.build_and_validate()
-    scalar_value2, scalar_gradient2 = jpt.diff(diff_config_scalar2)
-
-    # Print scalar results
-    print(f"\nScalar Output Results:")
-    print(f"1. Power Integral: {scalar_value1:.6e}")
-    print(f"   Gradient dF/dh: {scalar_gradient1:.6e}")
-    print(f"   Physical meaning: How the total power changes with h")
-    print(f"\n2. σ8-like Measure: {scalar_value2:.6e}")
-    print(f"   Gradient dσ8/dh: {scalar_gradient2:.6e}")
-    print(f"   Physical meaning: How the clustering amplitude changes with h")
-
-    # Visualization
-    plt.figure(figsize=(12, 10))
-
-    # Plot power spectrum and its gradient
-    plt.subplot(3, 1, 1)
-    plt.plot(k, power_spectrum, label='P(k) - Power Spectrum')
-    plt.plot(k, gradient_vector, label='dP(k)/dh - Gradient')
+    config = DiffConfig()
+    config.term = 'P_A'
+    config.diff_method = 'jacfwd'
+    config.pk_diff_param = 'Omegam'
+    config.pk_params = {'Omegam': 0.3099, 'Omegab': 0.0486, 'h': 0.6774, 'ns': 0.9611, 'sigma8': 0.8159}
+    config.pk_generation_method = 'discoeb'
+    diff_config = config.build_and_validate()
+    dPk = jpt.diff(diff_config)
+    direct = jpt.get('P_A', jpt._discoeb_pk_generator("Omegam", 0.3099, diff_config.pk_params))
+    plt.plot(k, dPk, label='dPk')
+    plt.plot(k, direct, label='direct')
     plt.xscale('log')
     plt.yscale('log')
-    plt.title('Vector Output: Power Spectrum and its Gradient')
     plt.legend()
-
-    # Plot contribution to first scalar gradient
-    plt.subplot(3, 1, 2)
-    # The VJP applies the chain rule using k weights when calculating the gradient
-    contribution1 = k * gradient_vector / jnp.sum(k * gradient_vector) * scalar_gradient1
-    plt.plot(k, contribution1)
-    plt.xscale('log')
-    plt.title(f'Contribution to Power Integral Gradient (dF/dh = {scalar_gradient1:.6e})')
-
-    # Plot contribution to second scalar gradient
-    plt.subplot(3, 1, 3)
-    filter_func = jnp.exp(-((jnp.log10(k) - jnp.log10(0.2))**2) / 0.5)
-    # The VJP applies chain rule using the filter function when calculating the gradient
-    contribution2 = filter_func * gradient_vector / jnp.sum(filter_func * gradient_vector) * scalar_gradient2
-    plt.plot(k, contribution2)
-    plt.xscale('log')
-    plt.title(f'Contribution to σ8-like Gradient (dσ8/dh = {scalar_gradient2:.6e})')
-
-    plt.tight_layout()
     plt.show()
