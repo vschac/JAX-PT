@@ -18,7 +18,7 @@ class DiffConfig:
         self.pk_diff_param = 'h'
 
         # Jax-PT terms/functions config
-        self.term = 'P_1loop'
+        self.term = None
         self.function = None
         self.P_window = None
         self.C_window = None
@@ -29,7 +29,9 @@ class DiffConfig:
         self.reduction_func = None
         self.tangent = None
 
-        
+
+    # Default reduction functions
+       
 
     def build_and_validate(self):
         # Pk generation validation
@@ -94,6 +96,14 @@ class DiffConfig:
         # Jax differentiation validation
         if self.diff_type not in ['scalar', 'vector']:
             raise ValueError("diff_type must be either 'scalar' or 'vector'")
+        if self.diff_type == 'scalar':
+            if self.diff_method not in ['grad', 'vjp']:
+                raise ValueError("diff_method must be either 'grad' or 'vjp' for scalar differentiation")
+            if self.reduction_func is None:
+                print("Warning: reduction_func is None for scalar differentiation. Defaulting to sum function.")
+                self.reduction_func = jnp.sum
+        if self.diff_type == 'vector' and self.diff_method not in ['jacfwd', 'jvp', 'vjp']:
+            raise ValueError("diff_method must be either 'jacfwd', 'jacrev', or 'jvp' for vector differentiation")
         if self.diff_method not in ['jacfwd', 'jacrev', 'vjp', 'jvp', 'grad']:
             raise ValueError("diff_method must be one of jacfwd, jacrev, vjp, jvp, or grad")
         if self.reduction_func is not None and not callable(self.reduction_func):

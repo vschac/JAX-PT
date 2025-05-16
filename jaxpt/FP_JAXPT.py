@@ -939,20 +939,15 @@ class JAXPT:
         current_value = P_params[diff_param]
         current_value = jnp.array(current_value, dtype=jnp.float64)
 
+        def diff_func(param_value):
+            power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
+            return jpt_func(P=power_spectrum, **jpt_params)
+
         if diff_method == 'jacfwd':
-            def diff_func(param_value):
-                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
-                return jpt_func(P=power_spectrum, **jpt_params)
-            
-            # Now differentiate with respect to the actual parameter value
             result = jacfwd(diff_func)(current_value)
             return result
         
         elif diff_method == 'jvp':
-            def diff_func(param_value):
-                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
-                return jpt_func(P=power_spectrum, **jpt_params)
-            
             if tangent is None:
                 # Default: use a scalar value of 1.0 for cosmological parameter differentiation
                 tangent = jnp.array(1.0, dtype=jnp.float64)
@@ -962,49 +957,56 @@ class JAXPT:
             primal_out, jvp_result = jvp(diff_func, (current_value,), (tangent,))
             # Should primals be returned as well? Or removed to keep the ouput consistent?
             return primal_out, jvp_result
+        elif diff_method == 'vjp':
+            primal_out, vjp_fn = vjp(diff_func, current_value)
+
+            if isinstance(primal_out, tuple):
+                # For tuple outputs, create a tuple of scalar ones
+                tangent = tuple(jnp.ones_like(r) for r in primal_out)
+            else:
+                # For scalar output
+                tangent = jnp.array(1.0)
+            gradient = vjp_fn(tangent)[0]
+            return primal_out, gradient
 
         
-    def _scalar_diff(self, pk_method, P_params, jpt_func, jpt_params, diff_param, diff_method, reduction_func=None):
+    def _scalar_diff(self, pk_method, P_params, jpt_func, jpt_params, diff_param, diff_method, reduction_func):
+        if reduction_func is None:
+            raise ValueError("reduction_func must be provided for scalar differentiation")
+            
         current_value = P_params[diff_param]
         current_value = jnp.array(current_value, dtype=jnp.float64)
         
-        if diff_method == 'vjp':
-            def diff_func(param_value):
-                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
-                result = jpt_func(P=power_spectrum, **jpt_params)
-                
-                # If a reduction function is provided, apply it to get a scalar output
-                if reduction_func is not None:
-                    return reduction_func(result)
-                return result
+        def diff_func(param_value):
+            power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
+            result = jpt_func(P=power_spectrum, **jpt_params)
             
+            if isinstance(result, tuple):
+                # If result is a tuple, apply reduction to each element
+                return tuple(reduction_func(r) for r in result)
+            else:
+                # If result is a single array, apply reduction directly
+                return reduction_func(result)
+        
+        if diff_method == 'vjp':
             primal_out, vjp_fn = vjp(diff_func, current_value)
             
-            if reduction_func is not None:
-                # For scalar output, use tangent=1.0
-                gradient = vjp_fn(jnp.array(1.0))[0]
+            if isinstance(primal_out, tuple):
+                # For tuple outputs, create a tuple of scalar ones
+                tangent = tuple(jnp.array(1.0) for _ in primal_out)
             else:
-                # For vector output, use vector of ones as tangent
-                tangent = jnp.ones_like(primal_out)
-                gradient = vjp_fn(tangent)[0]
+                # For scalar output
+                tangent = jnp.array(1.0)
             
+            # This current approach uses 1 tangent resulting in one gradient, should they be split into one for each term?
+            gradient = vjp_fn(tangent)[0]
             return primal_out, gradient
         
         elif diff_method == 'grad':
-            if reduction_func is None:
-                raise ValueError("reduction_func must be provided when using 'grad' method")
-            
-            def diff_func(param_value):
-                power_spectrum = self._pk_generator(pk_method, param_value, diff_param, P_params)
-                result = jpt_func(P=power_spectrum, **jpt_params)
-                # Apply reduction to get scalar output for grad
-                return reduction_func(result)
-            
+            # (For a jpt func) Would either need to combine the gradients or return them separately in a new tuple
             grad_fn = grad(diff_func)
-            
             gradient = grad_fn(current_value)
-            
-            return gradient
+            return gradient 
         
         else:
             raise ValueError(f"Unsupported scalar differentiation method: {diff_method}")
@@ -1499,17 +1501,14 @@ if __name__ == "__main__":
     import jax.numpy as jnp
 
     config = DiffConfig()
-    config.term = 'P_A'
-    config.diff_method = 'jacfwd'
-    config.pk_diff_param = 'Omegam'
-    config.pk_params = {'Omegam': 0.3099, 'Omegab': 0.0486, 'h': 0.6774, 'ns': 0.9611, 'sigma8': 0.8159}
-    config.pk_generation_method = 'discoeb'
+    config.function = 'gI_ta'
+    # config.term = 'P_A'
+    config.diff_method = 'vjp'
+    config.diff_type = 'vector'
+    config.pk_diff_param = 'Omega_c'
+    config.pk_generation_method = 'jax-cosmo'
     diff_config = config.build_and_validate()
     dPk = jpt.diff(diff_config)
-    direct = jpt.get('P_A', jpt._discoeb_pk_generator("Omegam", 0.3099, diff_config.pk_params))
-    plt.plot(k, dPk, label='dPk')
-    plt.plot(k, direct, label='direct')
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
+    direct = jpt.gI_ta(P=jpt._jax_cosmo_pk_generator(0.12, 'Omega_c', diff_config.pk_params))
+    
+    print(dPk)
