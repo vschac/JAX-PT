@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 from jax.numpy import pi, sin, log10, log, exp
 from jax.scipy.signal import fftconvolve
-from jax import config
+from jax import config, jit
 config.update("jax_enable_x64", True)
 
 def P_13_reg(k, P):
@@ -264,41 +264,82 @@ def c_window(n, n_cut):
     
     return W
 
+# def p_window(k, log_k_left, log_k_right):
+#     log_k = jnp.log10(k)
+    
+#     max_log_k = jnp.max(log_k)
+#     min_log_k = jnp.min(log_k)
+    
+#     log_k_left = min_log_k + log_k_left
+#     log_k_right = max_log_k - log_k_right
+    
+#     mask_left = log_k <= log_k_left
+#     mask_right = log_k >= log_k_right
+    
+#     # Extract elements that satisfy the masks
+#     left = log_k[mask_left]
+#     right = log_k[mask_right]
+
+#     if left.size > 0:
+#         x_left = (min_log_k - left) / (min_log_k - left[-1])
+#         W_left = x_left - (1 / (2 * pi)) * sin(2 * pi * x_left)
+#     else:
+#         W_left = jnp.array([])  # Avoid shape mismatch
+
+#     if right.size > 0:
+#         x_right = (right - right[-1]) / (right[0] - max_log_k)
+#         W_right = x_right - (1 / (2 * pi)) * sin(2 * pi * x_right)
+#     else:
+#         W_right = jnp.array([])  # Avoid shape mismatch
+
+#     W = jnp.ones_like(k)
+
+#     if W_left.size > 0:
+#         W = W.at[mask_left].set(W_left)
+#     if W_right.size > 0:
+#         W = W.at[mask_right].set(W_right)
+
+#     return W
+
 def p_window(k, log_k_left, log_k_right):
     log_k = jnp.log10(k)
     
     max_log_k = jnp.max(log_k)
     min_log_k = jnp.min(log_k)
     
-    log_k_left = min_log_k + log_k_left
-    log_k_right = max_log_k - log_k_right
+    log_k_left_val = min_log_k + log_k_left
+    log_k_right_val = max_log_k - log_k_right
     
-    mask_left = log_k <= log_k_left
-    mask_right = log_k >= log_k_right
-    
-    # Extract elements that satisfy the masks
-    left = log_k[mask_left]
-    right = log_k[mask_right]
-
-    if left.size > 0:
-        x_left = (min_log_k - left) / (min_log_k - left[-1])
-        W_left = x_left - (1 / (2 * pi)) * sin(2 * pi * x_left)
-    else:
-        W_left = jnp.array([])  # Avoid shape mismatch
-
-    if right.size > 0:
-        x_right = (right - right[-1]) / (right[0] - max_log_k)
-        W_right = x_right - (1 / (2 * pi)) * sin(2 * pi * x_right)
-    else:
-        W_right = jnp.array([])  # Avoid shape mismatch
-
     W = jnp.ones_like(k)
-
-    if W_left.size > 0:
-        W = W.at[mask_left].set(W_left)
-    if W_right.size > 0:
-        W = W.at[mask_right].set(W_right)
-
+    
+    mask_left = log_k <= log_k_left_val
+    mask_right = log_k >= log_k_right_val
+    
+    # LEFT WINDOW
+    # Normalize from 0 at min_log_k to 1 at boundary
+    x_left = jnp.where(
+        mask_left,
+        (min_log_k - log_k) / (min_log_k - log_k_left_val),
+        0.0
+    )
+    
+    # Apply window function 
+    W_left = x_left - (1 / (2 * pi)) * sin(2 * pi * x_left)
+    
+    # RIGHT WINDOW
+    # Normalize from 0 at max_log_k to 1 at boundary
+    x_right = jnp.where(
+        mask_right,
+        (log_k - max_log_k) / (log_k_right_val - max_log_k),
+        0.0
+    )
+    
+    W_right = x_right - (1 / (2 * pi)) * sin(2 * pi * x_right)
+    
+    # Apply the windows to the appropriate regions
+    W = jnp.where(mask_left, W_left, W)
+    W = jnp.where(mask_right, W_right, W)
+    
     return W
 
 

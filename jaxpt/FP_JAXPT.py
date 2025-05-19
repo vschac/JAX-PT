@@ -12,6 +12,8 @@ from jax.numpy.fft import ifft, irfft
 from dataclasses import dataclass
 from typing import Optional, Any
 from functools import partial
+from time import time
+
 
 def process_x_term(X):
     """Process X term for JAX compatibility, preserving complex values and handling nested arrays."""
@@ -240,11 +242,138 @@ class JAXPT:
 
         #These cannot be cached properties since they would be accessed twice in one function call (the one loop functions)
         #Therefore producing a side affect as the second access is done via cache and breaking differentiability
-        self.X_spt = process_x_term(self.temp_fpt.X_spt)
-        self.X_lpt = process_x_term(self.temp_fpt.X_lpt)
+        # self.X_spt = process_x_term(self.temp_fpt.X_spt)
+        # self.X_lpt = process_x_term(self.temp_fpt.X_lpt)
         #TODO may be able to add these back as cached properties, check differentiability
 
-        if warmup: self._warm_up_jit_functions()
+        if warmup: self._simple_warmup()
+
+    def _simple_warmup(self):
+        """Streamlined JIT warm-up focused on top-level API functions and internal computation methods."""
+        print("Starting JIT warm-up...")
+        
+        # Prepare test inputs
+        dummy_P = jnp.ones_like(self.k_original)
+        window_settings = [
+            {"P_window": None, "C_window": None},
+            {"P_window": jnp.array([0.2, 0.2]), "C_window": 0.5},
+            {"P_window": None, "C_window": 0.5},
+            {"P_window": jnp.array([0.2, 0.2]), "C_window": None}
+        ]
+        
+        # Warm up all the top-level API functions
+        api_functions = [
+            "one_loop_dd_bias_b3nl", 
+            "one_loop_dd_bias_lpt_NL", 
+            "IA_tt", 
+            "IA_mix", 
+            "IA_ta", 
+            "IA_ct", 
+            "gI_ct", 
+            "gI_ta", 
+            "gI_tt", 
+            "kPol",
+            "OV"
+        ]
+        
+        # Warm up each function with each window setting
+        for func_name in api_functions:
+            func = getattr(self, func_name)
+            for settings in window_settings:
+                _ = func(dummy_P, **settings)
+        
+        # # Warm up _get_ methods used by SPT calculations
+        # spt_get_methods = [
+        #     '_get_1loop', '_get_sig4', '_get_Pd1d2', '_get_Pd2d2', 
+        #     '_get_Pd1s2', '_get_Pd2s2', '_get_Ps2s2', '_get_sig3nl'
+        # ]
+        
+        # for method_name in spt_get_methods:
+        #     for settings in window_settings:
+        #         try:
+        #             _ = globals()[method_name](
+        #                 dummy_P, self.X_spt, self._static_config,
+        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+        #                 **settings
+        #             )
+        #         except Exception:
+        #             pass  # Silently continue if method doesn't exist or has errors
+        
+        # # Warm up _get_ methods used by LPT calculations
+        # lpt_get_methods = ['_get_Pb1L', '_get_Pb1L_2', '_get_Pb1L_b2L', '_get_Pb2L', '_get_Pb2L_2']
+        
+        # for method_name in lpt_get_methods:
+        #     for settings in window_settings:
+        #         try:
+        #             _ = globals()[method_name](
+        #                 dummy_P, self.X_lpt, self._static_config,
+        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+        #                 **settings
+        #             )
+        #         except Exception:
+        #             pass
+        
+        # # Warm up tensor term get methods
+        # special_get_methods = [
+        #     {'name': '_get_P_0EtE', 'X': [self.X_IA_tij_feG2, self.X_IA_deltaE1]},
+        #     {'name': '_get_P_E2tE', 'X': [self.X_IA_tij_heG2, self.X_IA_A]},
+        #     {'name': '_get_P_tEtE', 'X': [self.X_IA_tij_F2F2, self.X_IA_tij_G2G2, self.X_IA_tij_F2G2]},
+        #     {'name': '_get_P_d2tE', 'X': [self.X_IA_gb2_F2, self.X_IA_gb2_G2]},
+        #     {'name': '_get_P_s2tE', 'X': [self.X_IA_gb2_S2F2, self.X_IA_gb2_S2G2]}
+        # ]
+        
+        # for method_info in special_get_methods:
+        #     for settings in window_settings:
+        #         try:
+        #             _ = globals()[method_info['name']](
+        #                 dummy_P, method_info['X'], self._static_config,
+        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+        #                 **settings
+        #             )
+        #         except Exception:
+        #             pass
+        
+        # # Warm up _get_P_0tE which has a different signature
+        # try:
+        #     _ = globals()['_get_P_0tE'](
+        #         dummy_P, [self.X_spt, self.X_sptG], self._static_config, 
+        #         self.k_original, self.k_extrap, self.k_final, 
+        #         self.id_pad, self.l, self.m, 
+        #         P_window=None, C_window=None
+        #     )
+        # except Exception:
+        #     pass
+        
+        # # Warm up methods that don't use window parameters
+        # try:
+        #     _ = globals()['_get_P_Btype2'](dummy_P, self.k_original)
+        #     _ = globals()['_get_P_deltaE2'](dummy_P, self.k_original)
+        # except Exception:
+        #     pass
+        
+        # # Warm up compute_term with different X parameters and operations
+        # key_tensors = [
+        #     self.X_IA_E, self.X_kP1, self.X_kP2, self.X_kP3
+        # ]
+        
+        # operations = [None, lambda x: 2.0 * x, lambda x: x / (80 * jnp.pi ** 2)]
+        
+        # for X in key_tensors:
+        #     for op in operations:
+        #         for settings in window_settings:
+        #             try:
+        #                 _ = compute_term(
+        #                     dummy_P, X, self._static_config, self.k_extrap, self.k_final, 
+        #                     self.id_pad, self.l, self.m, operation=op, **settings
+        #                 )
+        #             except Exception:
+        #                 pass
+        
+        # # Specifically warm up kPol which was showing performance issues
+        # _ = self.kPol(dummy_P, P_window=None, C_window=None)
+        # _ = self.kPol(dummy_P, P_window=jnp.array([0.2, 0.2]), C_window=None)
+        
+        print("JIT warm-up completed.")
 
     def _warm_up_jit_functions(self):
         """Calls JIT-compiled functions with dummy arguments to force compilation."""
@@ -483,16 +612,27 @@ class JAXPT:
         _ = _gI_tt_core(self.X_IA_gb2_S2he, self.X_IA_gb2_he, self._static_config, 
                         self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                         dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)
+        
+        # Warm up _kPol_core
+        # _ = _kPol_core(self.X_kP1, self.X_kP2, self.X_kP3, self._static_config,
+        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+        #                 dummy_P_for_transforms, P_window=None, C_window=None)
+        # _ = _kPol_core(self.X_kP1, self.X_kP2, self.X_kP3, self._static_config, 
+        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+        #                 dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)
+        _ = self.kPol(dummy_P_orig, P_window=None, C_window=None)
+        _ = self.kPol(dummy_P_orig, P_window=p_window_array, C_window=c_window_value)
         print("JIT warm-up completed.")
 
-
-
+    @jax_cached_property
+    def X_spt(self):
+        return self.temp_fpt.X_spt
+    @jax_cached_property
+    def X_lpt(self):
+        return self.temp_fpt.X_lpt
     @jax_cached_property
     def X_sptG(self):
         return self.temp_fpt.X_sptG
-    @jax_cached_property
-    def X_cleft(self):
-        return self.temp_fpt.X_cleft
     @jax_cached_property
     def X_IA_A(self):
         return self.temp_fpt.X_IA_A
@@ -539,9 +679,6 @@ class JAXPT:
     def X_IA_tij_F2G2(self):
         return self.temp_fpt.X_IA_tij_F2G2
     @jax_cached_property
-    def X_IA_tij_F2G2reg(self):
-        return self.temp_fpt.X_IA_tij_F2G2reg
-    @jax_cached_property
     def X_IA_gb2_F2(self):
         return self.temp_fpt.X_IA_gb2_F2
     @jax_cached_property
@@ -571,12 +708,6 @@ class JAXPT:
     @jax_cached_property
     def X_kP3(self):
         return self.temp_fpt.X_kP3
-    @jax_cached_property
-    def X_RSDA(self):
-        return self.temp_fpt.X_RSDA
-    @jax_cached_property
-    def X_RSDB(self):
-        return self.temp_fpt.X_RSDB
 
 
         
@@ -594,76 +725,56 @@ class JAXPT:
         
     
     def one_loop_dd_bias_b3nl(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["one_loop_dd_bias_b3nl"])
         return _b3nl_core(self.X_spt, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                           P, P_window=P_window, C_window=C_window)
 
     def one_loop_dd_bias_lpt_NL(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["one_loop_dd_bias_lpt_NL"])
         return _lpt_NL_core(self.X_lpt, self.X_spt, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                           P, P_window=P_window, C_window=C_window)
-
+    
     def IA_tt(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_tt"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _IA_tt_core(self.X_IA_E, self.X_IA_B, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                           P, P_window=P_window, C_window=C_window)
 
     def IA_mix(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_mix"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _IA_mix_core(self.X_IA_A, self.X_IA_DEE, self.X_IA_DBB, self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                           P, P_window=P_window, C_window=C_window)
 
     def IA_ta(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_ta"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _IA_ta_core(self.X_IA_deltaE1, self.X_IA_0E0E, self.X_IA_0B0B, self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                             P, P_window=P_window, C_window=C_window)
 
     def IA_ct(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["IA_ct"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _IA_ct_core(self.X_spt, self.X_sptG, self.X_IA_tij_feG2, self.X_IA_tij_heG2, self.X_IA_A, self.X_IA_tij_F2F2, self.X_IA_deltaE1, self.X_IA_tij_G2G2, self.X_IA_tij_F2G2, 
                            self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                            P, P_window=P_window, C_window=C_window)
 
     def gI_ct(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_ct"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _gI_ct_core(self.X_IA_gb2_F2, self.X_IA_gb2_G2, self.X_IA_gb2_S2F2, self.X_IA_gb2_S2G2, 
-                           self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+                           self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                            P, P_window=P_window, C_window=C_window)
 
     def gI_ta(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_ta"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _gI_ta_core(self.X_IA_gb2_F2, self.X_IA_gb2_fe, self.X_IA_gb2_S2F2, self.X_IA_gb2_S2fe,
-                            self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+                            self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                             P, P_window=P_window, C_window=C_window)
 
     def gI_tt(self, P, P_window=None, C_window=None):
-        # return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["gI_tt"])
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
         return _gI_tt_core(self.X_IA_gb2_S2he, self.X_IA_gb2_he, self._static_config, 
                            self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                            P, P_window=P_window, C_window=C_window)
 
-    def OV(self, P, C_window=None):
-        return self.get("P_OV", P, C_window=C_window)
+    def OV(self, P, P_window=None, C_window=None):
+        return _get_OV(P, self.X_OV, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+                       P_window=P_window, C_window=C_window)
 
     def IA_der(self, P):
         return (self.k_original**2)*P
 
     def kPol(self, P, P_window=None, C_window=None):
-        return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups["kPol"])
+        return _kPol_core(self.X_kP1, self.X_kP2, self.X_kP3, self._static_config,
+                          self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+                          P, P_window=P_window, C_window=C_window)
     
     def get(self, term, P, P_window=None, C_window=None):
         """
@@ -1234,7 +1345,7 @@ def _IA_ta_core(X_IA_deltaE1, X_IA_0E0E, X_IA0B0B, static_cfg, k_original, k_ext
                          P_window=P_window, C_window=C_window)
     P_0B0B, _ = J_k_tensor(P, X_IA0B0B, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
-    
+    P_deltaE1, P_0E0E, P_0B0B = _apply_extrapolation(P_deltaE1, P_0E0E, P_0B0B, EK=static_cfg.EK)
     return 2 * P_deltaE1, 2 * P_deltaE2, P_0E0E, P_0B0B
 
 @partial(jit, static_argnames=["static_cfg"])
@@ -1290,7 +1401,7 @@ def _IA_ct_core(X_spt, X_sptG, X_IA_tij_feG2, X_IA_tij_heG2, X_IA_A, X_IA_tij_F2
     return P_0tE, P_0EtE, P_E2tE, P_tEtE
 
 def _gI_ct_core(X_IA_gb2_F2, X_IA_gb2_G2, X_IA_gb2_S2F2, X_IA_gb2_S2G2, 
-                static_cfg, k_original, k_extrap, k_final, id_pad, l, m,
+                static_cfg, k_extrap, k_final, id_pad, l, m,
                 P, P_window=None, C_window=None):
     P_F2, _ = J_k_tensor(P, X_IA_gb2_F2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
@@ -1311,7 +1422,7 @@ def _gI_ct_core(X_IA_gb2_F2, X_IA_gb2_G2, X_IA_gb2_S2F2, X_IA_gb2_S2G2,
     return P_d2tE, P_s2tE
 
 def _gI_ta_core(X_IA_gb2_F2, X_IA_gb2_fe, X_IA_gb2_S2F2, X_IA_gb2_S2fe, 
-                static_cfg, k_original, k_extrap, k_final, id_pad, l, m,
+                static_cfg, k_extrap, k_final, id_pad, l, m,
                 P, P_window=None, C_window=None):
     
     P_d2E, _ = J_k_tensor(P, X_IA_gb2_F2, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -1336,6 +1447,18 @@ def _gI_tt_core(X_IA_gb2_S2he, X_IA_gb2_he, static_cfg, k_extrap, k_final, id_pa
     P_d2E2 = 2 * P_d2E2
     return P_s2E2, P_d2E2
 
+def _kPol_core(X_kP1, X_kP2, X_kP3, static_cfg, k_extrap, k_final, id_pad, l, m,
+               P, P_window=None, C_window=None):
+    P_kP1, _ = J_k_tensor(P, X_kP1, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
+    P_kP2, _ = J_k_tensor(P, X_kP2, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
+    P_kP3, _ = J_k_tensor(P, X_kP3, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
+    P_kP1 = _apply_extrapolation(P_kP1, EK=static_cfg.EK)
+    P_kP2 = _apply_extrapolation(P_kP2, EK=static_cfg.EK)
+    P_kP3 = _apply_extrapolation(P_kP3, EK=static_cfg.EK)
+    return P_kP1 / (80 * jnp.pi ** 2), P_kP2 / (80 * jnp.pi ** 2), P_kP3 / (80 * jnp.pi ** 2)
 
 
 @partial(jit, static_argnames=["static_cfg"])
@@ -1718,8 +1841,9 @@ def J_k_tensor(P, X, static_cfg: StaticConfig,
         P_b2 = P * k_extrap ** (-nu2_i)
         
         if P_window is not None:
-            P_b1 = P_b1 * P_window
-            P_b2 = P_b2 * P_window
+            W = p_window(k_extrap, P_window[0], P_window[1])
+            P_b1 = P_b1 * W
+            P_b2 = P_b2 * W
             
         if static_cfg.n_pad > 0:
             P_b1 = jnp.pad(P_b1, pad_width=(static_cfg.n_pad, static_cfg.n_pad), mode='constant', constant_values=0)
