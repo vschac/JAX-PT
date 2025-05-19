@@ -157,31 +157,3 @@ class DiffConfigDC():
                 'w0': -1.0,
                 'wa': 0.0
             }
-
-
-if __name__ == "__main__":
-    # Example usage
-    config = DiffConfig()
-    config.pk_generation_method = 'jax-cosmo'
-    config.pk_params = {'Omega_c': 0.12,
-                        'Omega_b': 0.022,
-                        'h': 0.69,
-                        'n_s': 0.96,
-                        'sigma8': 0.8,
-                        'Omega_k': 0.0,
-                        'w0': -1.0,
-                        'wa': 0.0
-                        }
-    config.pk_diff_param = 'h'
-    config.term = 'P_1loop'
-    config.function = None
-    config.P_window = None
-    config.C_window = None
-    config.diff_type = 'vector'
-    config.diff_method = 'jacfwd'
-    config.reduction_func = None
-    config.tangent = None
-
-    print(config)
-    # validated_config = config.build_and_validate()
-    # print(validated_config)

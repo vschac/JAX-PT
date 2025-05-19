@@ -80,7 +80,7 @@ def k_arrays():
 @pytest.fixture
 def jpt(k_arrays): 
     _, k_jax = k_arrays
-    return JAXPT(k_jax, P_window=jnp.array([0.2, 0.2]), C_window=0.75, low_extrap=-5, high_extrap=3)
+    return JAXPT(k_jax, P_window=jnp.array([0.2, 0.2]), C_window=0.75, low_extrap=-5, high_extrap=3, warmup=False)
 
 @pytest.fixture
 def fpt(k_arrays):

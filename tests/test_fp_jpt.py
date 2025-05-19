@@ -15,8 +15,15 @@ P_window = jnp.array([0.2, 0.2])
 C_window = 0.75
 
 if __name__ == "__main__":
+    from time import time
     jpt = JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=int(0.5 * len(k)))
-    jpt.IA_mix(P, P_window=P_window, C_window=C_window)
+    funcs = ["one_loop_dd_bias_b3nl", "one_loop_dd_bias_lpt_NL", "IA_tt", "IA_mix", "IA_ta", "IA_ct", "gI_ct", "gI_ta", "gI_tt", "kPol"]
+    for func in funcs:
+        start = time()
+        result = getattr(jpt, func)(P, P_window=P_window, C_window=C_window)
+        end = time()
+        print(f"{func} took {end - start:.4f} seconds")
+    
 
 @pytest.fixture
 def jpt():

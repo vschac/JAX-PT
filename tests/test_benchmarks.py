@@ -13,7 +13,7 @@ def jpt():
     d = np.loadtxt(data_path)
     k = d[:, 0]
     n_pad = int(0.5 * len(k))
-    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad)
+    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=False)
 
 # def test_one_loop_dd(jpt):
 #     bmark = np.transpose(jpt.one_loop_dd(P, C_window=C_window)[0])
@@ -54,7 +54,7 @@ def test_IA_ta(jpt):
     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_IA_ta_benchmark.txt'))
 
 def test_IA_der(jpt):
-    bmark = np.transpose(jpt.IA_der(P, C_window=C_window))
+    bmark = np.transpose(jpt.IA_der(P))
     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_IA_der_benchmark.txt'))
 
 def test_IA_ct(jpt):
