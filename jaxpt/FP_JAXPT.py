@@ -160,77 +160,6 @@ class JAXPT:
         self.tau_l = omega * self.l
 
 
-        self.term_config = {
-            # Standard compute_term cases
-            "P_E": {"type": "standard", "X": "X_IA_E", "operation": lambda x: 2 * x},
-            "P_B": {"type": "standard", "X": "X_IA_B", "operation": lambda x: 2 * x},
-            
-            "P_A": {"type": "standard", "X": "X_IA_A", "operation": lambda x: 2 * x},
-            "P_DEE": {"type": "standard", "X": "X_IA_DEE", "operation": lambda x: 2 * x},
-            "P_DBB": {"type": "standard", "X": "X_IA_DBB", "operation": lambda x: 2 * x},
-            
-            "P_deltaE1": {"type": "standard", "X": "X_IA_deltaE1", "operation": lambda x: 2 * x},
-            "P_0E0E": {"type": "standard", "X": "X_IA_0E0E"},
-            "P_0B0B": {"type": "standard", "X": "X_IA_0B0B"},
-            
-            "P_s2E2": {"type": "standard", "X": "X_IA_gb2_S2he", "operation": lambda x: 2 * x},
-            "P_d2E2": {"type": "standard", "X": "X_IA_gb2_he", "operation": lambda x: 2 * x},
-            
-            "P_d2E": {"type": "standard", "X": "X_IA_gb2_F2", "operation": lambda x: 2 * x},
-            "P_d20E": {"type": "standard", "X": "X_IA_gb2_fe", "operation": lambda x: 2 * x},
-            "P_s2E": {"type": "standard", "X": "X_IA_gb2_S2F2", "operation": lambda x: 2 * x},
-            "P_s20E": {"type": "standard", "X": "X_IA_gb2_S2fe", "operation": lambda x: 2 * x},
-            
-            "P_kP1": {"type": "standard", "X": "X_kP1", "operation": lambda x: x / (80 * jnp.pi ** 2)},
-            "P_kP2": {"type": "standard", "X": "X_kP2", "operation": lambda x: x / (160 * jnp.pi ** 2)},
-            "P_kP3": {"type": "standard", "X": "X_kP3", "operation": lambda x: x / (80 * jnp.pi ** 2)},
-            
-            # Special cases/unique terms
-            "P_Btype2": {"type": "special", "method": "_get_P_Btype2", "X": None},
-            "P_deltaE2": {"type": "special", "method": "_get_P_deltaE2", "X": None},
-            "P_OV": {"type": "special", "method": "OV", "X": "X_OV"},
-            
-            "P_0tE": {"type": "special", "method": "_get_P_0tE", "X": ["X_spt", "X_sptG"]},
-            "P_0EtE": {"type": "special", "method": "_get_P_0EtE", "X": ["X_IA_tij_feG2", "X_IA_deltaE1"]}, 
-            "P_E2tE": {"type": "special", "method": "_get_P_E2tE", "X": ["X_IA_tij_heG2", "X_IA_A"]},
-            "P_tEtE": {"type": "special", "method": "_get_P_tEtE", "X": ["X_IA_tij_F2F2", "X_IA_tij_G2G2", "X_IA_tij_F2G2"]},
-            
-            "P_1loop": {"type": "special", "method": "_get_1loop", "X": "X_spt"},
-            
-            "Pd1d2": {"type": "special", "method": "_get_Pd1d2", "X": "X_spt"},
-            "Pd2d2": {"type": "special", "method": "_get_Pd2d2", "X": "X_spt"},
-            "Pd1s2": {"type": "special", "method": "_get_Pd1s2", "X": "X_spt"},
-            "Pd2s2": {"type": "special", "method": "_get_Pd2s2", "X": "X_spt"},
-            "Ps2s2": {"type": "special", "method": "_get_Ps2s2", "X": "X_spt"},
-            
-            "sig4": {"type": "special", "method": "_get_sig4", "X": "X_spt"},
-            "sig3nl": {"type": "special", "method": "_get_sig3nl", "X": "X_spt"},
-            
-            "Pb1L": {"type": "special", "method": "_get_Pb1L", "X": "X_lpt"},
-            "Pb1L_2": {"type": "special", "method": "_get_Pb1L_2", "X": "X_lpt"},
-            "Pb1L_b2L": {"type": "special", "method": "_get_Pb1L_b2L", "X": "X_lpt"},
-            "Pb2L": {"type": "special", "method": "_get_Pb2L", "X": "X_lpt"},
-            "Pb2L_2": {"type": "special", "method": "_get_Pb2L_2", "X": "X_lpt"},
-            
-            "P_d2tE": {"type": "special", "method": "_get_P_d2tE", "X": ["X_IA_gb2_F2", "X_IA_gb2_G2"]},
-            "P_s2tE": {"type": "special", "method": "_get_P_s2tE", "X": ["X_IA_gb2_S2F2", "X_IA_gb2_S2G2"]},
-
-            "P_OV": {"type": "special", "method": "_get_OV", "X": "X_OV"},
-        }
-
-        self.term_groups = {
-            "IA_tt": ["P_E", "P_B"],
-            "IA_mix": ["P_A", "P_Btype2", "P_DEE", "P_DBB"],
-            "IA_ta": ["P_deltaE1", "P_deltaE2", "P_0E0E", "P_0B0B"],
-            "IA_ct": ["P_0tE", "P_0EtE", "P_E2tE", "P_tEtE"],
-            "gI_ct": ["P_d2tE", "P_s2tE"],
-            "gI_ta": ["P_d2E", "P_d20E", "P_s2E", "P_s20E"],
-            "gI_tt": ["P_s2E2", "P_d2E2"],
-            "kPol": ["P_kP1", "P_kP2", "P_kP3"],
-            "one_loop_dd_bias_b3nl": ["P_1loop", "Pd1d2", "Pd2d2", "Pd1s2", "Pd2s2", "Ps2s2", "sig4", "sig3nl"],
-            "one_loop_dd_bias_lpt_NL": ["Pb1L", "Pb1L_2", "Pb1L_b2L", "Pb2L", "Pb2L_2", "sig4"]
-        }
-
         self._static_config = StaticConfig(
             k_size=self.k_size,
             n_pad=self.n_pad,
@@ -765,7 +694,7 @@ class JAXPT:
                            P, P_window=P_window, C_window=C_window)
 
     def OV(self, P, P_window=None, C_window=None):
-        return _get_OV(P, self.X_OV, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+        return _OV_core(P, self.X_OV, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                        P_window=P_window, C_window=C_window)
 
     def IA_der(self, P):
@@ -776,262 +705,8 @@ class JAXPT:
                           self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                           P, P_window=P_window, C_window=C_window)
     
-    def get(self, term, P, P_window=None, C_window=None):
-        """
-        Get computed term(s) using JAX-compatible dispatch
-        
-        Parameters:
-        -----------
-        term : str
-            Term or group name to compute
-        P : array
-            Input power spectrum
-        P_window, C_window : optional
-            Window parameters
-        """
-        P = jnp.asarray(P, dtype=jnp.float64)
-        #Precompute P_window
-        if P_window is not None:
-            P_window = p_window(self.k_extrap, P_window[0], P_window[1])
-
-        if term in self.term_groups: 
-            return tuple(self.get(t, P, P_window=P_window, C_window=C_window) for t in self.term_groups[term])
-        
-        if term not in self.term_config:
-            raise ValueError(f"Unknown term: {term}")
-            
-        config = self.term_config[term]
-        
-        if config["type"] == "standard":
-            X = getattr(self, config["X"]) #TODO what about when its multiple X's
-            operation = config.get("operation")
-            return compute_term(P, X, self._static_config, self.k_extrap, self.k_final, 
-                                self.id_pad, self.l, self.m,
-                                P_window=P_window, C_window=C_window, operation=operation)
-        
-        elif config["type"] == "special":
-            method_name = config["method"]
-            method = globals()[method_name]
-            X = config["X"]
-            if isinstance(X, str):
-                X = getattr(self, X)
-            elif isinstance(X, list):
-                X = [getattr(self, x) for x in X]
-            else: #X is None, P_btype2 and P_deltaE2 case
-                return method(P, self.k_original)
-
-            if method_name == "_get_P_0tE":
-                return method(
-                    P, X,
-                    static_cfg=self._static_config, k_original=self.k_original,
-                    k_extrap=self.k_extrap, k_final=self.k_final, id_pad=self.id_pad,
-                    l=self.l, m=self.m, P_window=P_window, C_window=C_window
-                )
-            
-            result = method(
-                P, X,
-                static_cfg=self._static_config,
-                k_extrap=self.k_extrap,
-                k_final=self.k_final,
-                id_pad=self.id_pad,
-                l=self.l,
-                m=self.m,
-                P_window=P_window,
-                C_window=C_window
-            )
-            return result
-                
-        raise ValueError(f"Unable to process term: {term}")
     
-    # These get methods compute the derivative of the output pk with respect to the input pk, potentially useful but prob remove
-    def vjp_get(self, term, P, P_window=None, C_window=None, tangent_type='ones', tangent_vector=None, seed=42):
-        """
-        Compute vector-Jacobian product (gradient) of the requested term with respect to input P.
-        
-        Parameters:
-        -----------
-        term : str
-            Term or group name to compute
-        P : array
-            Input power spectrum
-        P_window, C_window : optional
-            Window parameters
-        tangent_type : str, optional
-            Type of tangent vector to use for gradient computation:
-            - 'ones': Use vector of ones (gradient of sum of outputs)
-            - 'random': Use random normal vector (explore random direction in output space)
-            - 'custom': Use provided tangent_vector
-            - 'unit_i': Use unit vector for single component (i provided in tangent_vector)
-            - 'normalized': Ones vector normalized by output size (for scale-invariant gradients)
-        tangent_vector : array_like, optional
-            Custom tangent vector or index parameter depending on tangent_type
-        seed : int, optional
-            Random seed when tangent_type='random'
-            
-        Returns:
-        --------
-        tuple: (result, gradient)
-            - result: The output of the term computation
-            - gradient: The gradient of the term with respect to P
-        """
-        def get_wrt_P(P):
-            return self.get(term, P, P_window=P_window, C_window=C_window)
-        
-        result, vjp_function = vjp(get_wrt_P, P)
-        
-        if tangent_type == 'ones':
-            # BENEFIT: Simple gradient of sum - useful for overall sensitivity analysis
-            # and when optimizing the total value across all output elements
-            if isinstance(result, tuple):
-                tangent = tuple(jnp.ones_like(r) for r in result)
-            else:
-                tangent = jnp.ones_like(result)
-        
-        elif tangent_type == 'random':
-            # BENEFIT: Explores random directions in gradient space - excellent for
-            # detecting numerical instabilities and testing overall differentiability
-            key = jax.random.PRNGKey(seed)
-            if isinstance(result, tuple):
-                keys = jax.random.split(key, len(result))
-                tangent = tuple(jax.random.normal(k, r.shape) for k, r in zip(keys, result))
-            else:
-                tangent = jax.random.normal(key, result.shape)
-        
-        elif tangent_type == 'custom':
-            # BENEFIT: Allows exploring specific physics directions or
-            # targeting particular features in spectral space
-            if tangent_vector is None:
-                raise ValueError("tangent_vector must be provided when tangent_type='custom'")
-            tangent = tangent_vector
-        
-        elif tangent_type == 'unit_i':
-            # BENEFIT: Computes gradient for a single output element - useful for
-            # understanding how specific spectral regions are influenced
-            if tangent_vector is None:
-                raise ValueError("tangent_vector (index) must be provided when tangent_type='unit_i'")
-            
-            if isinstance(result, tuple):
-                # For tuple outputs, tangent_vector should be a tuple of (tuple_index, element_index)
-                tuple_idx, element_idx = tangent_vector
-                tangent = tuple(jnp.zeros_like(r) for r in result)
-                # Create a one-hot vector for the specified element
-                unit_vec = jnp.zeros_like(result[tuple_idx])
-                unit_vec = unit_vec.at[element_idx].set(1.0)
-                # Replace the zeros at tuple_idx with the one-hot vector
-                tangent = list(tangent)
-                tangent[tuple_idx] = unit_vec
-                tangent = tuple(tangent)
-            else:
-                # For single array output, tangent_vector is the index
-                unit_vec = jnp.zeros_like(result)
-                unit_vec = unit_vec.at[tangent_vector].set(1.0)
-                tangent = unit_vec
-        
-        elif tangent_type == 'normalized':
-            # BENEFIT: Scale-invariant gradients - especially important when comparing
-            # sensitivity across different terms with varying output sizes
-            if isinstance(result, tuple):
-                tangent = tuple(jnp.ones_like(r) / jnp.prod(jnp.array(r.shape)) for r in result)
-            else:
-                tangent = jnp.ones_like(result) / jnp.prod(jnp.array(result.shape))
-        
-        else:
-            raise ValueError(f"Unknown tangent_type: {tangent_type}")
-        
-        gradient = vjp_function(tangent)
-        
-        return result, gradient[0]  # [0] because vjp_fn returns a tuple of gradients (in this case there's only one element)
 
-    def jvp_get(self, term, P, tangent_P=None, P_window=None, C_window=None, 
-                tangent_type='custom', tangent_params=None, scaling=1.0, seed=42):
-        """
-        Compute Jacobian-vector product (directional derivative) of the requested term 
-        with respect to a perturbation of input P in the direction of tangent_P.
-        
-        Parameters:
-        -----------
-        term : str
-            Term or group name to compute
-        P : array
-            Input power spectrum
-        tangent_P : array, optional
-            Custom tangent vector specifying direction in input space
-        P_window, C_window : optional
-            Window parameters
-        tangent_type : str, optional
-            Type of tangent vector to use:
-            - 'custom': Use provided tangent_P (default)
-            - 'random': Use random normal vector to explore sensitivity across frequencies
-            - 'unit_i': Use unit vector for single component to test sensitivity to a specific k bin
-            - 'sinusoidal': Use sinusoidal perturbation to test frequency-dependent response
-            - 'gaussian': Use gaussian perturbation to test localized response
-        tangent_params : dict or int, optional
-            Parameters for specialized tangent vectors:
-            - For 'unit_i': Index of element to perturb
-            - For 'sinusoidal': {'amplitude': float, 'frequency': float, 'phase': float}
-            - For 'gaussian': {'center': float, 'width': float, 'amplitude': float}
-            - Common: {'normalize': bool} to normalize the tangent vector
-        scaling : float, optional
-            Scaling factor for the tangent vector
-        seed : int, optional
-            Random seed when tangent_type='random'
-            
-        Returns:
-        --------
-        tuple: (result, jvp_value, tangent_P)
-            - result: The output of the term computation
-            - jvp_value: The directional derivative in the direction of tangent_P
-            - tangent_P: The actual tangent vector used (useful for auto-generated tangents)
-        """
-        # Prepare the function to differentiate
-        def get_wrt_P(P):
-            return self.get(term, P, P_window=P_window, C_window=C_window)
-        
-        # Create the tangent vector based on tangent_type
-        if tangent_type == 'custom':
-            if tangent_P is None:
-                raise ValueError("tangent_P must be provided when tangent_type='custom'")
-        elif tangent_type == 'random':
-            key = jax.random.PRNGKey(seed)
-            tangent_P = jax.random.normal(key, P.shape)
-        elif tangent_type == 'unit_i':
-            if not isinstance(tangent_params, int):
-                raise ValueError("tangent_params must be an integer index when tangent_type='unit_i'")
-            tangent_P = jnp.zeros_like(P)
-            tangent_P = tangent_P.at[tangent_params].set(1.0)
-        elif tangent_type == 'sinusoidal':
-            if tangent_params is None:
-                tangent_params = {'amplitude': 1.0, 'frequency': 5.0/len(P), 'phase': 0.0}
-            k_indices = jnp.arange(len(P))
-            amplitude = tangent_params.get('amplitude', 1.0)
-            frequency = tangent_params.get('frequency', 5.0/len(P))
-            phase = tangent_params.get('phase', 0.0)
-            tangent_P = amplitude * jnp.sin(frequency * k_indices + phase)
-        elif tangent_type == 'gaussian':
-            if tangent_params is None:
-                tangent_params = {'center': len(P)//2, 'width': len(P)/10, 'amplitude': 1.0}
-            k_indices = jnp.arange(len(P))
-            center = tangent_params.get('center', len(P)//2)
-            width = tangent_params.get('width', len(P)/10)
-            amplitude = tangent_params.get('amplitude', 1.0)
-            tangent_P = amplitude * jnp.exp(-((k_indices - center) / width) ** 2)
-        else:
-            raise ValueError(f"Unknown tangent_type: {tangent_type}")
-        
-        # Normalize tangent vector if requested
-        if isinstance(tangent_params, dict) and tangent_params.get('normalize', False):
-            norm = jnp.linalg.norm(tangent_P)
-            # Avoid division by zero
-            tangent_P = jnp.where(norm > 0, tangent_P / norm, tangent_P)
-        
-        # Apply scaling
-        tangent_P = scaling * tangent_P
-        
-        # Compute the JVP
-        result, jvp_value = jvp(get_wrt_P, (P,), (tangent_P,))
-        
-        return result, jvp_value, tangent_P
-    
     def diff(self, config):
         """
         Main differentiation interface that delegates to appropriate differentiation methods
@@ -1047,11 +722,7 @@ class JAXPT:
         The result of the differentiation operation as specified by the configuration
         """        
 
-        if config.term is not None:
-            jpt_func = functools.partial(self.get, term=config.term)
-        else:
-            jpt_func = getattr(self, config.function)
-            
+        jpt_func = getattr(self, config.function) 
         jpt_params = {"P_window":config.P_window, "C_window":config.C_window}
         
         if config.diff_type == 'vector':
@@ -1249,18 +920,6 @@ def _apply_extrapolation(*args, EK=None):
         return args if len(args) > 1 else args[0]
     return [EK.PK_original(var)[1] for var in args] if len(args) > 1 else EK.PK_original(args[0])[1]
 
-@partial(jit, static_argnames=["static_cfg", "operation"])
-def compute_term(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
-                 P_window=None, C_window=None, operation=None):        
-    result, _ = J_k_tensor(P, X, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    result = _apply_extrapolation(result, EK=static_cfg.EK)
-
-    if operation:
-        final_result = operation(result)
-        return final_result
-    return result
-
 ##### Core for original functions #####
 @partial(jit, static_argnames=["static_cfg"])
 def _b3nl_core(X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -1377,16 +1036,24 @@ def _IA_ct_core(X_spt, X_sptG, X_IA_tij_feG2, X_IA_tij_heG2, X_IA_A, X_IA_tij_F2
     P_feG2, A = J_k_tensor(P, X_IA_tij_feG2, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     P_feG2 = _apply_extrapolation(P_feG2, EK=static_cfg.EK)
-    P_A00E = compute_term(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
+    # P_A00E = compute_term(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
+    #                      P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
+    P_A00E = J_k_tensor(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)[0]
+    P_A00E = _apply_extrapolation(P_A00E, EK=static_cfg.EK)
+    P_A00E = jnp.multiply(P_A00E, 2)
     P_0EtE = jnp.subtract(P_feG2,(1/2)*P_A00E)
     P_0EtE = 2*P_0EtE
 
     P_heG2, A = J_k_tensor(P, X_IA_tij_heG2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
     P_heG2 = _apply_extrapolation(P_heG2, EK=static_cfg.EK)
-    P_A0E2 = compute_term(P, X_IA_A, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
+    # P_A0E2 = compute_term(P, X_IA_A, static_cfg, k_extrap, k_final, id_pad, l, m,
+    #                      P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
+    P_A0E2 = J_k_tensor(P, X_IA_A, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)[0]
+    P_A0E2 = _apply_extrapolation(P_A0E2, EK=static_cfg.EK)
+    P_A0E2 = jnp.multiply(P_A0E2, 2)
     P_E2tE = jnp.subtract(P_heG2,(1/2)*P_A0E2)
     P_E2tE = 2*P_E2tE
 
@@ -1462,284 +1129,8 @@ def _kPol_core(X_kP1, X_kP2, X_kP3, static_cfg, k_extrap, k_final, id_pad, l, m,
     P_kP3 = _apply_extrapolation(P_kP3, EK=static_cfg.EK)
     return P_kP1 / (80 * jnp.pi ** 2), P_kP2 / (160 * jnp.pi ** 2), P_kP3 / (80 * jnp.pi ** 2)
 
-
 @partial(jit, static_argnames=["static_cfg"])
-def _get_1loop(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    P22_coef = jnp.array([2*1219/1470., 2*671/1029., 2*32/1715., 2*1/3., 2*62/35., 2*8/35., 1/3.])
-    Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    P22_mat = jnp.multiply(P22_coef, jnp.transpose(mat))
-    P22 = jnp.sum(P22_mat, axis=1)
-    P13 = P_13_reg(k_extrap, Ps)
-    P_1loop = P22 + P13
-    P_1loop = _apply_extrapolation(P_1loop, EK=static_cfg.EK)
-    return P_1loop
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_sig4(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    Ps, _ = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    sig4 = jax.scipy.integrate.trapezoid(k_extrap ** 3 * Ps ** 2, x=jnp.log(k_extrap)) / (2. * jnp.pi ** 2)
-    return sig4
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pd1d2(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray, 
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray, 
-               P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    Pd1d2 = 2. * (17. / 21 * mat[0, :] + mat[4, :] + 4. / 21 * mat[1, :])
-    Pd1d2 = _apply_extrapolation(Pd1d2, EK=static_cfg.EK)
-    return Pd1d2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pd2d2(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    Pd2d2 = 2. * (mat[0, :])
-    Pd2d2 = _apply_extrapolation(Pd2d2, EK=static_cfg.EK)
-    return Pd2d2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pd1s2(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    Pd1s2 = 2. * (8. / 315 * mat[0, :] + 4. / 15 * mat[4, :] + 254. / 441 * mat[1, :] + 2. / 5 * mat[5,:] + 16. / 245 * mat[2,:])
-    Pd1s2 = _apply_extrapolation(Pd1s2, EK=static_cfg.EK)
-    return Pd1s2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pd2s2(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    Pd2s2 = 2. * (2. / 3 * mat[1, :])
-    Pd2s2 = _apply_extrapolation(Pd2s2, EK=static_cfg.EK)
-    return Pd2s2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Ps2s2(P, X_spt, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    Pd2s2 = 2. * (4. / 45 * mat[0, :] + 8. / 63 * mat[1, :] + 8. / 35 * mat[2, :])
-    Pd2s2 = _apply_extrapolation(Pd2s2, EK=static_cfg.EK)
-    return Pd2s2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_P_0EtE(P, X_list, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    X_IA_tij_feG2, X_IA_deltaE1 = X_list
-    P_feG2, A = J_k_tensor(P, X_IA_tij_feG2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    P_feG2 = _apply_extrapolation(P_feG2, EK=static_cfg.EK)
-    P_A00E = compute_term(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
-    P_0EtE = jnp.subtract(P_feG2,(1/2)*P_A00E)
-    P_0EtE = 2*P_0EtE
-    return P_0EtE
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_P_E2tE(P, X_list, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    X_IA_tij_heG2, X_IA_A = X_list
-    P_heG2, A = J_k_tensor(P, X_IA_tij_heG2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_heG2 = _apply_extrapolation(P_heG2, EK=static_cfg.EK)
-    P_A0E2 = compute_term(P, X_IA_A, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
-    P_E2tE = jnp.subtract(P_heG2,(1/2)*P_A0E2)
-    P_E2tE = 2*P_E2tE
-    return P_E2tE
-    
-@partial(jit, static_argnames=["static_cfg"])
-def _get_P_tEtE(P, X_list, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    X_IA_tij_F2F2, X_IA_tij_G2G2, X_IA_tij_F2G2 = X_list
-    P_F2F2, A = J_k_tensor(P,X_IA_tij_F2F2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_G2G2, A = J_k_tensor(P,X_IA_tij_G2G2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_F2G2, A = J_k_tensor(P,X_IA_tij_F2G2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_F2F2, P_G2G2, P_F2G2 = _apply_extrapolation(P_F2F2, P_G2G2, P_F2G2, EK=static_cfg.EK)
-    P_tEtE = P_F2F2+P_G2G2-2*P_F2G2
-    P_tEtE = 2*P_tEtE
-    return P_tEtE
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pb1L_b2L(P, X_lpt, static_cfg: StaticConfig,
-                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
-                                                        mat[5, :], mat[6, :]]
-    X3 = (50. / 21.) * j000 + 2. * j1n11 - (8. / 21.) * j002
-    Pb1L_b2L = X3
-    Pb1L_b2L = _apply_extrapolation(Pb1L_b2L, EK=static_cfg.EK)
-    return Pb1L_b2L
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pb2L(P, X_lpt, static_cfg: StaticConfig,
-                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
-                                                        mat[5, :], mat[6, :]]
-    X4 = (34. / 21.) * j000 + 2. * j1n11 + (8. / 21.) * j002
-    Pb2L = X4
-    Pb2L = _apply_extrapolation(Pb2L, EK=static_cfg.EK)
-    return Pb2L
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pb2L_2(P, X_lpt, static_cfg: StaticConfig,
-                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    _, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
-                                                        mat[5, :], mat[6, :]]
-    X5 = j000
-    Pb2L_2 = X5
-    Pb2L_2 = _apply_extrapolation(Pb2L_2, EK=static_cfg.EK)
-    return Pb2L_2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_P_d2tE(P, X_list, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    X_IA_gb2_F2, X_IA_gb2_G2 = X_list
-    P_F2, _ = J_k_tensor(P, X_IA_gb2_F2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_G2, _ = J_k_tensor(P, X_IA_gb2_G2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_F2 = _apply_extrapolation(P_F2, EK=static_cfg.EK)
-    P_G2 = _apply_extrapolation(P_G2, EK=static_cfg.EK)
-    P_d2tE = 2 * (P_G2 - P_F2)
-    return P_d2tE
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_P_s2tE(P, X_list, static_cfg: StaticConfig,
-               k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-               id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-               P_window=None, C_window=None):
-    X_IA_gb2_S2F2, X_IA_gb2_S2G2 = X_list
-    P_S2F2, _ = J_k_tensor(P, X_IA_gb2_S2F2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_S2G2, _ = J_k_tensor(P, X_IA_gb2_S2G2, static_cfg, k_extrap, k_final, id_pad, l, m,
-                           P_window=P_window, C_window=C_window)
-    P_S2F2 = _apply_extrapolation(P_S2F2, EK=static_cfg.EK)
-    P_S2G2 = _apply_extrapolation(P_S2G2, EK=static_cfg.EK)
-    P_s2tE = 2 * (P_S2G2 - P_S2F2)
-    return P_s2tE
-
-
-
-#Get functions that use jax_utils functions, produce non exact outputs though 
-#differences are due to jpt versions of input parameters (parameters pass allclose, output does not)
-
-#Also P13 but that was absorbed in P_1loop
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pb1L(P, X_lpt, static_cfg: StaticConfig,
-                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
-                                                        mat[5, :], mat[6, :]]
-    X1 = ((144. / 245.) * j000 - (176. / 343.) * j002 - (128. / 1715.) * j004 + (16. / 35.) * j1n11 - (
-            16. / 35.) * j1n13)
-    Y1 = Y1_reg_NL(k_extrap, Ps)
-    Pb1L = X1 + Y1
-    Pb1L = _apply_extrapolation(Pb1L, EK=static_cfg.EK)
-    return Pb1L
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_Pb1L_2(P, X_lpt, static_cfg: StaticConfig,
-                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    Ps, mat = J_k_scalar(P, X_lpt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    [j000, j002, j2n22, j1n11, j1n13, j004, j2n20] = [mat[0, :], mat[1, :], mat[2, :], mat[3, :], mat[4, :],
-                                                        mat[5, :], mat[6, :]]
-    X2 = ((16. / 21.) * j000 - (16. / 21.) * j002 + (16. / 35.) * j1n11 - (16. / 35.) * j1n13)
-    Y2 = Y2_reg_NL(k_extrap, Ps)
-    Pb1L_2 = X2 + Y2
-    Pb1L_2 = _apply_extrapolation(Pb1L_2, EK=static_cfg.EK)
-    return Pb1L_2
-
-@jit
-def _get_P_Btype2(P, k_original):
-    P_Btype2 = P_IA_B(k_original, P)
-    P_Btype2 = 4 * P_Btype2
-    return P_Btype2
-
-@jit
-def _get_P_deltaE2(P, k_original):
-    P_deltaE2 = P_IA_deltaE2(k_original, P)
-    #Add extrap?
-    P_deltaE2 = 2 * P_deltaE2
-    return P_deltaE2
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_P_0tE(P, X_list, static_cfg: StaticConfig,
-                  k_original: jnp.array, k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    X_spt, X_sptG = X_list
-    Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    one_loop_coef = jnp.array(
-        [2 * 1219 / 1470., 2 * 671 / 1029., 2 * 32 / 1715., 2 * 1 / 3., 2 * 62 / 35., 2 * 8 / 35., 1 / 3.])
-    P22_mat = jnp.multiply(one_loop_coef, jnp.transpose(mat))
-    P_22F = jnp.sum(P22_mat, 1)
-
-    one_loop_coefG= jnp.array(
-        [2*1003/1470, 2*803/1029, 2*64/1715, 2*1/3, 2*58/35, 2*12/35, 1/3])
-    PsG, matG = J_k_scalar(P, X_sptG, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    P22G_mat = jnp.multiply(one_loop_coefG, jnp.transpose(matG))
-    P_22G = jnp.sum(P22G_mat, 1)
-    P_22F, P_22G = _apply_extrapolation(P_22F, P_22G, EK=static_cfg.EK)
-    P_13G = P_IA_13G(k_original,P,)
-    P_13F = P_IA_13F(k_original, P)
-    P_0tE = P_22G-P_22F+P_13G-P_13F
-    P_0tE = 2*P_0tE
-    return P_0tE
-
-@partial(jit, static_argnames=["static_cfg"])
-def _get_OV(P, X_OV, static_cfg: StaticConfig,
+def _OV_core(P, X_OV, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray,
                id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
                P_window=None, C_window=None):
@@ -1749,17 +1140,8 @@ def _get_OV(P, X_OV, static_cfg: StaticConfig,
     P_OV = P * (2 * jnp.pi) ** 2
     return P_OV
 
-@partial(jit, static_argnames=["static_cfg"])
-def _get_sig3nl(P, X_spt, static_cfg: StaticConfig,
-                  k_extrap: jnp.ndarray, k_final: jnp.ndarray,
-                  id_pad: jnp.ndarray, l: jnp.ndarray, m: jnp.ndarray,  
-                  P_window=None, C_window=None):
-    Ps, _ = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-                         P_window=P_window, C_window=C_window)
-    sig3nl = Y1_reg_NL(k_extrap, Ps)
-    sig3nl = _apply_extrapolation(sig3nl, EK=static_cfg.EK)
-    return sig3nl
 
+#### Low level computational functions ####
 @partial(jit, static_argnames=["static_cfg"])
 def J_k_scalar(P, X, static_cfg: StaticConfig,
                k_extrap: jnp.ndarray, k_final: jnp.ndarray, 

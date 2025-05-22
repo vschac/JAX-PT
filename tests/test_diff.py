@@ -32,7 +32,7 @@ def base_config():
         'w0': -1.0,
         'wa': 0.0
     }
-    config.term = 'P_1loop'
+    config.function = 'one_loop_dd_bias_b3nl'
     return config
 
 
@@ -41,7 +41,7 @@ class TestDiffConfig:
         """Test that a valid configuration passes validation."""
         validated = base_config.build_and_validate()
         assert isinstance(validated, DiffConfigDC)
-        assert validated.term == 'P_1loop'
+        assert validated.function == 'one_loop_dd_bias_b3nl'
         
     def test_invalid_pk_method(self, base_config):
         """Test that an invalid pk_generation_method raises an error."""
@@ -61,16 +61,10 @@ class TestDiffConfig:
         with pytest.raises(ValueError):
             base_config.build_and_validate()
     
-    def test_both_term_and_function(self, base_config):
-        """Test that providing both term and function raises an error."""
-        base_config.function = "IA_tt"
-        with pytest.raises(ValueError, match="Both term and function cannot be provided"):
-            base_config.build_and_validate()
-    
-    def test_neither_term_nor_function(self, base_config):
-        """Test that providing neither term nor function raises an error."""
-        base_config.term = None
-        with pytest.raises(ValueError, match="Either term or function must be provided"):
+    def test_no_function(self, base_config):
+        """Test that providing no function raises an error."""
+        base_config.function = None
+        with pytest.raises(ValueError, match="function must be provided"):
             base_config.build_and_validate()
 
 
@@ -83,9 +77,15 @@ class TestDifferentiation:
         
         result = jpt.diff(validated_config)
         
-        assert isinstance(result, jnp.ndarray)
-        assert result.shape == k.shape
-        assert not jnp.any(jnp.isnan(result))
+        # Since one_loop_dd_bias_b3nl returns multiple arrays, check the first component
+        if isinstance(result, tuple):
+            first_component = result[0]
+        else:
+            first_component = result
+            
+        assert isinstance(first_component, jnp.ndarray)
+        assert first_component.shape == k.shape
+        assert not jnp.any(jnp.isnan(first_component))
     
     def test_jvp_vector(self, jpt, base_config):
         """Test jvp with vector output."""
@@ -96,10 +96,18 @@ class TestDifferentiation:
         
         primal, tangent = jpt.diff(validated_config)
         
-        assert isinstance(primal, jnp.ndarray)
-        assert isinstance(tangent, jnp.ndarray)
-        assert primal.shape == k.shape
-        assert tangent.shape == k.shape
+        # Check the first component of each tuple
+        if isinstance(primal, tuple):
+            primal_first = primal[0]
+            tangent_first = tangent[0]
+        else:
+            primal_first = primal
+            tangent_first = tangent
+            
+        assert isinstance(primal_first, jnp.ndarray)
+        assert isinstance(tangent_first, jnp.ndarray)
+        assert primal_first.shape == k.shape
+        assert tangent_first.shape == k.shape
     
     def test_vjp_scalar_with_reduction(self, jpt, base_config):
         """Test vjp with scalar output and reduction function."""
@@ -110,7 +118,12 @@ class TestDifferentiation:
         
         primal, gradient = jpt.diff(validated_config)
         
-        assert not jnp.isnan(primal)
+        # For functions returning multiple terms, primal will be a tuple of scalars
+        if isinstance(primal, tuple):
+            assert all(not jnp.isnan(p) for p in primal)
+        else:
+            assert not jnp.isnan(primal)
+            
         assert not jnp.isnan(gradient)
     
     def test_grad_with_reduction(self, jpt, base_config):
@@ -120,20 +133,10 @@ class TestDifferentiation:
         base_config.reduction_func = lambda x: jnp.sum(x)
         validated_config = base_config.build_and_validate()
         
-        # Fix: Don't use tuple unpacking for scalar values
         result = jpt.diff(validated_config)
-        # Access components based on whether result is a tuple or not
-        if isinstance(result, tuple):
-            value = result[0]
-            gradient = result[1]
-        else:
-            gradient = result  # If only gradient is returned
-            value = None
         
-        # Now test the components
-        if value is not None:
-            assert not jnp.isnan(value)
-        assert not jnp.isnan(gradient)
+        # Just verify the gradient is valid
+        assert not jnp.isnan(result)
     
     def test_grad_without_reduction(self, jpt, base_config):
         """Test grad without reduction function raises an error."""
@@ -155,28 +158,19 @@ def test_different_parameters(jpt, base_config, param):
     
     result = jpt.diff(validated_config)
     
-    assert result.shape == k.shape
-    assert not jnp.any(jnp.isnan(result))
+    # For multiple return values, check the first component
+    if isinstance(result, tuple):
+        first_component = result[0]
+    else:
+        first_component = result
+        
+    assert first_component.shape == k.shape
+    assert not jnp.any(jnp.isnan(first_component))
 
 
-@pytest.mark.parametrize("term", ['P_1loop', 'P_E', 'P_B', 'P_A'])
-def test_different_terms(jpt, base_config, term):
-    """Test differentiation of different terms."""
-    base_config.term = term
-    base_config.diff_type = "vector"
-    base_config.diff_method = "jacfwd"
-    validated_config = base_config.build_and_validate()
-    
-    result = jpt.diff(validated_config)
-    
-    assert result.shape == k.shape
-    assert not jnp.any(jnp.isnan(result))
-
-
-@pytest.mark.parametrize("function", ['IA_tt', 'IA_mix', 'one_loop_dd_bias_b3nl'])
+@pytest.mark.parametrize("function", ['IA_tt', 'IA_mix', 'IA_ta', 'IA_ct', 'gI_tt', 'gI_ct', 'gI_ta', 'kPol', 'OV'])
 def test_different_functions(jpt, base_config, function):
     """Test differentiation of different functions."""
-    base_config.term = None
     base_config.function = function
     base_config.diff_type = "vector"
     base_config.diff_method = "jacfwd"
@@ -184,7 +178,7 @@ def test_different_functions(jpt, base_config, function):
     
     result = jpt.diff(validated_config)
     
-    # Fix: Handle both tuple and array return types
+    # Handle both tuple and array return types
     if isinstance(result, tuple):
         # Check each component in the tuple
         for component in result:
@@ -197,8 +191,18 @@ def test_different_functions(jpt, base_config, function):
 
 def test_chi2_reduction(jpt, base_config):
     """Test a cosmology-relevant chi^2 reduction function."""
-    def chi_squared(power_spectrum):
+    # Use IA_tt which returns a simpler output (just two arrays)
+    base_config.function = "IA_tt"
+    
+    # Create a chi-squared function that takes the output and reduces it
+    def chi_squared(power_spectrum_tuple):
         """Mock chi^2 calculation comparing to 'data'"""
+        # For IA_tt, extract just the first component (P_E)
+        if isinstance(power_spectrum_tuple, tuple):
+            power_spectrum = power_spectrum_tuple[0]
+        else:
+            power_spectrum = power_spectrum_tuple
+            
         mock_data = power_spectrum * 1.05  # 5% difference
         mock_errors = power_spectrum * 0.1   # 10% errors
         return jnp.sum(((power_spectrum - mock_data) / mock_errors) ** 2)
@@ -218,6 +222,8 @@ def test_chi2_reduction(jpt, base_config):
 
 def test_custom_tangent_jvp(jpt, base_config):
     """Test JVP with different tangent vectors."""
+    # Use IA_tt for simpler output structure
+    base_config.function = "IA_tt"
     base_config.diff_type = "vector"
     base_config.diff_method = "jvp"
     
@@ -231,13 +237,19 @@ def test_custom_tangent_jvp(jpt, base_config):
     custom_config = base_config.build_and_validate()
     _, custom_jvp = jpt.diff(custom_config)
     
+    # Extract the first component for comparison
+    default_component = default_jvp[0] if isinstance(default_jvp, tuple) else default_jvp
+    custom_component = custom_jvp[0] if isinstance(custom_jvp, tuple) else custom_jvp
+    
     # The custom tangent should scale the JVP result
-    ratio = custom_jvp / default_jvp
+    ratio = custom_component / default_component
     assert jnp.allclose(ratio, 2.0, rtol=1e-5)
 
 
 def test_windowing_effect(jpt, base_config):
     """Test the effect of window parameters on differentiation."""
+    # Use IA_tt for simpler output structure
+    base_config.function = "IA_tt"
     base_config.diff_type = "vector"
     base_config.diff_method = "jacfwd"
     
@@ -253,28 +265,37 @@ def test_windowing_effect(jpt, base_config):
     with_window_config = base_config.build_and_validate()
     with_window_result = jpt.diff(with_window_config)
     
+    # Extract comparable components
+    no_window_component = no_window_result[0] if isinstance(no_window_result, tuple) else no_window_result
+    with_window_component = with_window_result[0] if isinstance(with_window_result, tuple) else with_window_result
+    
     # Results should be different with windowing
-    assert not jnp.allclose(no_window_result, with_window_result)
+    assert not jnp.allclose(no_window_component, with_window_component)
 
 
 def test_vjp_vs_grad(jpt, base_config):
     """Compare vjp and grad methods for scalar differentiation."""
+    # Use IA_tt for simpler output
+    base_config.function = "IA_tt"
     base_config.diff_type = "scalar"
-    base_config.reduction_func = lambda x: jnp.sum(x)
+    
+    # Create a reduction function that only works with the first component
+    def sum_first_component(result):
+        if isinstance(result, tuple):
+            return jnp.sum(result[0])
+        return jnp.sum(result)
+    
+    base_config.reduction_func = sum_first_component
     
     # Method 1: VJP
     base_config.diff_method = "vjp"
     vjp_config = base_config.build_and_validate()
-    vjp_result = jpt.diff(vjp_config)
+    vjp_value, vjp_gradient = jpt.diff(vjp_config)
     
     # Method 2: grad
     base_config.diff_method = "grad" 
     grad_config = base_config.build_and_validate()
-    grad_result = jpt.diff(grad_config)
-    
-    # Extract gradients safely
-    vjp_gradient = vjp_result[1] if isinstance(vjp_result, tuple) else vjp_result
-    grad_gradient = grad_result[1] if isinstance(grad_result, tuple) else grad_result
+    grad_gradient = jpt.diff(grad_config)
     
     # The gradients should be close
     assert jnp.allclose(vjp_gradient, grad_gradient, rtol=1e-5)

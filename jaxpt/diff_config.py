@@ -17,8 +17,7 @@ class DiffConfig:
                             }
         self.pk_diff_param = 'h'
 
-        # Jax-PT terms/functions config
-        self.term = None
+        # Jax-PT functions config
         self.function = None
         self.P_window = None
         self.C_window = None
@@ -53,30 +52,15 @@ class DiffConfig:
             if self.pk_diff_param not in discoeb_params:
                 raise ValueError(f"Invalid pk_diff_param. Supported params: {discoeb_params}")
         
-
-        # Jax-PT terms/functions validation
-        valid_terms = [
-            "P_E", "P_B", "P_A", "P_DEE", "P_DBB", "P_deltaE1", "P_0E0E", "P_0B0B",
-            "P_s2E2", "P_d2E2", "P_d2E", "P_d20E", "P_s2E", "P_s20E", "P_kP1", "P_kP2", 
-            "P_kP3", "P_Btype2", "P_deltaE2", "P_OV", "P_0tE", "P_0EtE", "P_E2tE", 
-            "P_tEtE", "P_1loop", "Pd1d2", "Pd2d2", "Pd1s2", "Pd2s2", "Ps2s2", "sig4", 
-            "sig3nl", "Pb1L", "Pb1L_2", "Pb1L_b2L", "Pb2L", "Pb2L_2", "P_d2tE", "P_s2tE", 
-        ]
         
         valid_functions = [
             "one_loop_dd_bias_b3nl", "one_loop_dd_bias_lpt_NL", "IA_tt", "IA_mix",
             "IA_ta", "IA_ct", "gI_ct", "gI_ta", "gI_tt", "OV", "IA_der", "kPol"
         ]
         
-        if self.term is not None and self.function is not None:
-            raise ValueError("Both term and function cannot be provided simultaneously. Choose one.")
         
-        if self.term is None and self.function is None:
-            raise ValueError("Either term or function must be provided.")
-        
-        if self.term is not None:
-            if self.term not in valid_terms:
-                raise ValueError(f"Invalid term. Must be one of: {valid_terms}")
+        if self.function is None:
+            raise ValueError("Function must be provided.")
         
         if self.function is not None:
             if isinstance(self.function, str):
@@ -115,7 +99,6 @@ class DiffConfig:
             pk_generation_method=self.pk_generation_method,
             pk_params=self.pk_params,
             pk_diff_param=self.pk_diff_param,
-            term=self.term,
             function=self.function,
             P_window=self.P_window,
             C_window=self.C_window,
@@ -126,7 +109,7 @@ class DiffConfig:
         )
     
     def __repr__(self):
-        return f"DiffConfig(pk_generation_method={self.pk_generation_method},\npk_params={self.pk_params},\npk_diff_param={self.pk_diff_param},\nterm={self.term},\nfunction={self.function},\nP_window={self.P_window},\nC_window={self.C_window},\ndiff_type={self.diff_type},\ndiff_method={self.diff_method},\nreduction_func={self.reduction_func},\ntangent={self.tangent})"
+        return f"DiffConfig(pk_generation_method={self.pk_generation_method},\npk_params={self.pk_params},\npk_diff_param={self.pk_diff_param},\nfunction={self.function},\nP_window={self.P_window},\nC_window={self.C_window},\ndiff_type={self.diff_type},\ndiff_method={self.diff_method},\nreduction_func={self.reduction_func},\ntangent={self.tangent})"
     def __str__(self):
         return self.__repr__()
     
@@ -136,7 +119,6 @@ class DiffConfigDC():
     pk_generation_method: str
     pk_params: dict
     pk_diff_param: str
-    term: str
     function: callable
     P_window: jnp.ndarray
     C_window: float
