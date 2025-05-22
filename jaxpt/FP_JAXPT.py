@@ -843,7 +843,7 @@ class JAXPT:
                 
         raise ValueError(f"Unable to process term: {term}")
     
-
+    # These get methods compute the derivative of the output pk with respect to the input pk, potentially useful but prob remove
     def vjp_get(self, term, P, P_window=None, C_window=None, tangent_type='ones', tangent_vector=None, seed=42):
         """
         Compute vector-Jacobian product (gradient) of the requested term with respect to input P.
@@ -1277,12 +1277,14 @@ def _b3nl_core(X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
     Pd2d2 = 2. * (mat[0, :])
     Pd1s2 = 2. * (8. / 315 * mat[0, :] + 4. / 15 * mat[4, :] + 254. / 441 * mat[1, :] + 2. / 5 * mat[5,:] + 16. / 245 * mat[2,:])
     Pd2s2 = 2. * (2. / 3 * mat[1, :])
-    Pd2s2 = 2. * (4. / 45 * mat[0, :] + 8. / 63 * mat[1, :] + 8. / 35 * mat[2, :])
+    Ps2s2 = 2. * (4. / 45 * mat[0, :] + 8. / 63 * mat[1, :] + 8. / 35 * mat[2, :])
     sig4 = jax.scipy.integrate.trapezoid(k_extrap ** 3 * Ps ** 2, x=jnp.log(k_extrap)) / (2. * jnp.pi ** 2)
     sig3nl = Y1_reg_NL(k_extrap, Ps)
+    # return Ps
+    P_1loop, Ps, Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig3nl = _apply_extrapolation(
+        P_1loop, Ps, Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig3nl, EK=static_cfg.EK)
     
-    P_1loop, Pd1d2, Pd2d2, Pd1s2, Pd2s2, sig3nl = _apply_extrapolation(P_1loop, Pd1d2, Pd2d2, Pd1s2, Pd2s2, sig3nl, EK=static_cfg.EK)
-    return P_1loop, Pd1d2, Pd2d2, Pd1s2, Pd2s2, sig4, sig3nl
+    return P_1loop, Ps, Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig4, sig3nl
 
 @partial(jit, static_argnames=["static_cfg"])
 def _lpt_NL_core(X_lpt, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -1309,8 +1311,8 @@ def _lpt_NL_core(X_lpt, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     sig4 = jax.scipy.integrate.trapezoid(k_extrap ** 3 * Ps ** 2, x=jnp.log(k_extrap)) / (2. * jnp.pi ** 2)
 
-    Pb1L, Pb1L_2, Pb1L_b2L, Pb2L, Pb2L_2 = _apply_extrapolation(Pb1L, Pb1L_2, Pb1L_b2L, Pb2L, Pb2L_2, EK=static_cfg.EK)
-    return Pb1L, Pb1L_2, Pb1L_b2L, Pb2L, Pb2L_2, sig4
+    Ps, Pb1L, Pb1L_2, Pb1L_b2L, Pb2L, Pb2L_2 = _apply_extrapolation(Ps, Pb1L, Pb1L_2, Pb1L_b2L, Pb2L, Pb2L_2, EK=static_cfg.EK)
+    return Ps, Pb1L, Pb1L_2, Pb1L_b2L, Pb2L, Pb2L_2, sig4
 
 @partial(jit, static_argnames=["static_cfg"])
 def _IA_tt_core(X_IA_E, X_IA_B, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -1458,7 +1460,7 @@ def _kPol_core(X_kP1, X_kP2, X_kP3, static_cfg, k_extrap, k_final, id_pad, l, m,
     P_kP1 = _apply_extrapolation(P_kP1, EK=static_cfg.EK)
     P_kP2 = _apply_extrapolation(P_kP2, EK=static_cfg.EK)
     P_kP3 = _apply_extrapolation(P_kP3, EK=static_cfg.EK)
-    return P_kP1 / (80 * jnp.pi ** 2), P_kP2 / (80 * jnp.pi ** 2), P_kP3 / (80 * jnp.pi ** 2)
+    return P_kP1 / (80 * jnp.pi ** 2), P_kP2 / (160 * jnp.pi ** 2), P_kP3 / (80 * jnp.pi ** 2)
 
 
 @partial(jit, static_argnames=["static_cfg"])

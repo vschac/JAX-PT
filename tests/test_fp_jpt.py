@@ -14,6 +14,47 @@ k = d[:, 0]
 P_window = jnp.array([0.2, 0.2])
 C_window = 0.75
 
+def plot_comparison(term_name, component_name, jaxpt_result, fastpt_result):
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(12, 8))
+    
+    # Convert to numpy if needed
+    j_arr = np.array(jaxpt_result)
+    f_arr = np.array(fastpt_result)
+    
+    # Plot actual values
+    plt.subplot(2, 1, 1)
+    plt.loglog(k, j_arr, label='JAXPT')
+    plt.loglog(k, f_arr, '--', label='FASTPT')
+    plt.xlabel('k [h/Mpc]')
+    plt.ylabel(f'{component_name}')
+    plt.title(f'{term_name} - {component_name}')
+    plt.legend()
+    plt.grid(True, which="both", ls="--", alpha=0.3)
+    
+    # Plot relative difference
+    plt.subplot(2, 1, 2)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rel_diff = np.abs((j_arr - f_arr) / f_arr)
+        rel_diff = np.where(np.isfinite(rel_diff), rel_diff, 0)
+    
+    plt.loglog(k, rel_diff)
+    plt.xlabel('k [h/Mpc]')
+    plt.ylabel('Relative Difference |(JAXPT-FASTPT)/FASTPT|')
+    plt.grid(True, which="both", ls="--", alpha=0.3)
+    
+    # Add max difference info
+    max_abs_diff = np.max(np.abs(j_arr - f_arr))
+    max_rel_diff = np.max(rel_diff)
+    plt.figtext(0.5, 0.01, f'Max abs diff: {max_abs_diff:.2e}, Max rel diff: {max_rel_diff:.2e}', 
+                ha='center', bbox=dict(facecolor='lightgray', alpha=0.5))
+    
+    # Save figure
+    plt.tight_layout()
+    filename = f"{term_name}_{component_name.replace(' ', '_').replace('/', '_')}.png"
+    plt.savefig(f"../term_comparison_plots/{filename}")
+    plt.close()
+
 if __name__ == "__main__":
     from time import time
     import colorama
@@ -81,6 +122,9 @@ if __name__ == "__main__":
                     print(f"   {component_status} Component {i}: {Fore.RED}MISMATCH{Style.RESET_ALL}")
                     print(f"      Max absolute difference: {Fore.YELLOW}{max_diff:.2e}{Style.RESET_ALL}")
                     print(f"      Max relative difference: {Fore.YELLOW}{rel_diff:.2e}{Style.RESET_ALL}")
+
+                    # Plotting the comparison
+                    # plot_comparison(func, f"Component {i}", result[i], r2[i])
                 else:
                     print(f"   {component_status} Component {i}: {Fore.GREEN}MATCH{Style.RESET_ALL}")
             
@@ -96,10 +140,11 @@ if __name__ == "__main__":
         print(f"{Fore.RED}{Style.BRIGHT}✗ SOME TESTS FAILED: Check the details above{Style.RESET_ALL}")
     print("="*80 + "\n")
 
+
 @pytest.fixture
 def jpt():
     n_pad = int(0.5 * len(k))
-    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=False)
+    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=True)
 
 @pytest.fixture
 def fpt():
