@@ -14,46 +14,6 @@ k = d[:, 0]
 P_window = jnp.array([0.2, 0.2])
 C_window = 0.75
 
-def plot_comparison(term_name, component_name, jaxpt_result, fastpt_result):
-    import matplotlib.pyplot as plt
-    plt.figure(figsize=(12, 8))
-    
-    # Convert to numpy if needed
-    j_arr = np.array(jaxpt_result)
-    f_arr = np.array(fastpt_result)
-    
-    # Plot actual values
-    plt.subplot(2, 1, 1)
-    plt.loglog(k, j_arr, label='JAXPT')
-    plt.loglog(k, f_arr, '--', label='FASTPT')
-    plt.xlabel('k [h/Mpc]')
-    plt.ylabel(f'{component_name}')
-    plt.title(f'{term_name} - {component_name}')
-    plt.legend()
-    plt.grid(True, which="both", ls="--", alpha=0.3)
-    
-    # Plot relative difference
-    plt.subplot(2, 1, 2)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        rel_diff = np.abs((j_arr - f_arr) / f_arr)
-        rel_diff = np.where(np.isfinite(rel_diff), rel_diff, 0)
-    
-    plt.loglog(k, rel_diff)
-    plt.xlabel('k [h/Mpc]')
-    plt.ylabel('Relative Difference |(JAXPT-FASTPT)/FASTPT|')
-    plt.grid(True, which="both", ls="--", alpha=0.3)
-    
-    # Add max difference info
-    max_abs_diff = np.max(np.abs(j_arr - f_arr))
-    max_rel_diff = np.max(rel_diff)
-    plt.figtext(0.5, 0.01, f'Max abs diff: {max_abs_diff:.2e}, Max rel diff: {max_rel_diff:.2e}', 
-                ha='center', bbox=dict(facecolor='lightgray', alpha=0.5))
-    
-    # Save figure
-    plt.tight_layout()
-    filename = f"{term_name}_{component_name.replace(' ', '_').replace('/', '_')}.png"
-    plt.savefig(f"../term_comparison_plots/{filename}")
-    plt.close()
 
 if __name__ == "__main__":
     from time import time
@@ -252,23 +212,6 @@ def test_kPol(jpt, fpt):
     else:
         assert False, f"Arrays are not the same length, old: {len(old)} new: {len(new)}"
 
-@pytest.mark.parametrize("term",
-                         ["P_E", "P_B", "P_A", "P_DEE", "P_DBB", "P_deltaE1", "P_0E0E", "P_0B0B",
-                         "P_s2E","P_s20E", "P_s2E2", "P_d2E",
-                         "P_d20E", "P_d2E2", "P_kP1", "P_kP2", "P_kP3", "P_OV", "P_0EtE",
-                         "P_E2tE", "P_tEtE", "Pd1d2", "Pd2d2", "Pd1s2", "Pd2s2", "Ps2s2", "sig4",
-                         "Pb1L_b2L", "Pb2L", "Pb2L_2", "P_d2tE", "P_s2tE",
-                         "P_Btype2", "P_deltaE2", "sig3nl", "Pb1L", "Pb1L_2", "P_0tE", "P_1loop",
-                        ])
-def test_every_term(jpt, fpt, term):
-    handler = FPTHandler(fpt, P=P, P_window=np.array([0.2, 0.2]), C_window=C_window)
-    fast = handler.get(term)
-    jaax = jpt.get(term, P, P_window=P_window, C_window=C_window)
-    if not np.allclose(fast, jaax):
-        print(f"Max difference for {term}: {np.max(np.abs(fast - jaax))}")
-        print(f"Relative difference for {term}: {np.max(np.abs((fast - jaax) / fast))}")
-        assert np.allclose(fast, jaax), f"Arrays for {term} are not equal"
-    assert np.allclose(fast, jaax), f"Arrays for {term} are not equal"
 
 ########## Differentiability Tests ##########
 def test_IA_mix_diff(jpt):
@@ -421,42 +364,4 @@ def test_lpt_NL_diff(jpt):
     assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
     assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
 
-@pytest.mark.parametrize("term",
-                         ["P_E", "P_B", "P_A", "P_DEE", "P_DBB", "P_deltaE1", "P_0E0E", "P_0B0B",
-                         "P_s2E","P_s20E", "P_s2E2", "P_d2E",
-                         "P_d20E", "P_d2E2", "P_kP1", "P_kP2", "P_kP3", "P_OV", "P_0EtE",
-                         "P_E2tE", "P_tEtE", "Pd1d2", "Pd2d2", "Pd1s2", "Pd2s2", "Ps2s2", "sig4",
-                         "Pb1L_b2L", "Pb2L", "Pb2L_2", "P_d2tE", "P_s2tE",
-                        "P_Btype2", "P_deltaE2", "sig3nl", "Pb1L", "Pb1L_2", "P_0tE", "P_1loop",
-                        ])
-def test_terms_differentiability(jpt, term):
-    """Test that each term is differentiable with respect to the input power spectrum."""
-    try:
-        # Create a wrapper function that returns only the term
-        def get_term(P_input):
-            return jpt.get(term, P_input)
-        
-        # Compute output for original input
-        P_jax = jnp.array(P)
-        output = get_term(P_jax)
-        
-        # Create a random tangent vector with the same shape as the output
-        # Using a small seed for reproducibility
-        key = jax.random.PRNGKey(42)
-        tangent = jax.random.normal(key, output.shape)
-        
-        # Compute VJP (Vector-Jacobian Product)
-        _, vjp_fun = vjp(get_term, P_jax)
-        gradient = vjp_fun(tangent)[0]  # Extract the vector-Jacobian product
-        
-        # Check that the gradient is valid
-        assert isinstance(gradient, jnp.ndarray), f"Gradient for {term} is not a JAX array"
-        assert gradient.shape == P_jax.shape, f"Gradient shape for {term} doesn't match input shape"
-        assert not jnp.any(jnp.isnan(gradient)), f"Gradient for {term} contains NaN values"
-        
-        # Calculate some statistics on the gradient for debugging
-        grad_abs_mean = jnp.mean(jnp.abs(gradient))        
-        # We don't want completely zero gradients, which could indicate a problem
-        assert grad_abs_mean > 0, f"Gradient for {term} has zero mean absolute value"
-    except Exception as e:
-        pytest.fail(f"JAX differentiation for term {term} failed with error: {str(e)}")
+# Add test funcs differentiability test

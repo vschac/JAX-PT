@@ -55,8 +55,6 @@ def main():
     fpt = FASTPT(k, to_do=['all'], low_extrap=-5, high_extrap=3, n_pad=n_pad)
     
     function_params = {
-        'one_loop_dd': {'P': P, 'P_window': P_window, 'C_window': C_window},
-        'one_loop_dd_bias': {'P': P, 'P_window': P_window, 'C_window': C_window},
         'one_loop_dd_bias_b3nl': {'P': P, 'P_window': P_window, 'C_window': C_window},
         'one_loop_dd_bias_lpt_NL': {'P': P, 'P_window': P_window, 'C_window': C_window},
         'IA_tt': {'P': P, 'P_window': P_window, 'C_window': C_window},
@@ -70,11 +68,6 @@ def main():
         'IA_s2': {'P': P, 'P_window': P_window, 'C_window': C_window},
         'OV': {'P': P, 'P_window': P_window, 'C_window': C_window},
         'kPol': {'P': P, 'P_window': P_window, 'C_window': C_window},
-        'RSD_components': {'P': P, 'P_window': P_window, 'C_window': C_window, 'f': 0.5},
-        'RSD_ABsum_components': {'P': P, 'P_window': P_window, 'C_window': C_window, 'f': 0.5},
-        'RSD_ABsum_mu': {'P': P, 'P_window': P_window, 'C_window': C_window, 'f': 0.5, 'mu_n': 0.5},
-        'J_k_scalar': {'P': P, 'X': fpt.X_spt, 'nu': -2, 'P_window': P_window, 'C_window': C_window},
-        'J_k_tensor': {'P': P, 'X': fpt.X_IA_E, 'P_window': P_window, 'C_window': C_window},
     }
     
     results = {}

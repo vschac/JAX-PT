@@ -35,5 +35,4 @@
 
 from .info import __version__
 
-from .JAXPT import JAXPT
 from .FP_JAXPT import JAXPT as FP_JAXPT
