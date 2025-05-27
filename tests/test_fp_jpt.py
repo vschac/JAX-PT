@@ -104,7 +104,7 @@ if __name__ == "__main__":
 @pytest.fixture
 def jpt():
     n_pad = int(0.5 * len(k))
-    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=True)
+    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=False)
 
 @pytest.fixture
 def fpt():
@@ -115,8 +115,6 @@ def fpt():
 def test_one_loop_dd_bias_b3nl(jpt, fpt):
     old = fpt.one_loop_dd_bias_b3nl(P, P_window=np.array([0.2, 0.2]), C_window=C_window)
     new = jpt.one_loop_dd_bias_b3nl(P, P_window=P_window, C_window=C_window)
-    ## ^^ Ps has been removed from the function signature for jpt
-    old = old[:1] + old[2:] #<< Remove Ps from the old array
     if len(old) == len(new):
         for i in range(len(old)):
             assert np.allclose(old[i], new[i]), f"Arrays at index {i} are not equal"
@@ -126,8 +124,6 @@ def test_one_loop_dd_bias_b3nl(jpt, fpt):
 def test_one_loop_dd_bias_lpt_NL(jpt, fpt):
     old = fpt.one_loop_dd_bias_lpt_NL(P, P_window=np.array([0.2, 0.2]), C_window=C_window)
     new = jpt.one_loop_dd_bias_lpt_NL(P, P_window=P_window, C_window=C_window)
-    ## ^^ Ps has been removed from the function signature for jpt
-    old = old[1:] #<< Remove Ps from the old array
     if len(old) == len(new):
         for i in range(len(old)):
             try:

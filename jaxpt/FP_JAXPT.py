@@ -174,12 +174,6 @@ class JAXPT:
             EK=self.EK
         )
 
-        #These cannot be cached properties since they would be accessed twice in one function call (the one loop functions)
-        #Therefore producing a side affect as the second access is done via cache and breaking differentiability
-        # self.X_spt = process_x_term(self.temp_fpt.X_spt)
-        # self.X_lpt = process_x_term(self.temp_fpt.X_lpt)
-        #TODO may be able to add these back as cached properties, check differentiability
-
         if warmup: self._simple_warmup()
 
     def _simple_warmup(self):
@@ -218,254 +212,6 @@ class JAXPT:
         
         print("JIT warm-up completed.")
 
-    def _warm_up_jit_functions(self):
-        """Calls JIT-compiled functions with dummy arguments to force compilation."""
-        print("Starting JIT warm-up...")
-
-        # Dummy Power Spectra
-        dummy_P_orig = jnp.ones_like(self.k_original, dtype=jnp.float64)
-        
-        # For functions that expect P already extrapolated, create a dummy directly
-        # of the right size to match k_extrap after transformation
-        if self.EK is not None:
-            # Method 1: Create a simple array of the right size
-            dummy_P_extrap_raw = jnp.ones_like(self.k_extrap, dtype=jnp.float64)
-            # Apply extrapolation to get the right size for functions that expect
-            # to transform the input P themselves
-            dummy_P_for_transforms = self.EK.PK_original(dummy_P_extrap_raw)[1]
-        else:
-            dummy_P_for_transforms = dummy_P_orig
-            dummy_P_extrap_raw = dummy_P_orig
-
-        dummy_P_final_grid_input = jnp.ones_like(self.k_final, dtype=jnp.float64)
-
-        # Setup window parameters for all combinations:
-        # 1. Both None (already in the original code)
-        # 2. Only P_window
-        # 3. Only C_window
-        # 4. Both provided
-        
-        # Define sample window values
-        p_window_value = (0.2, 0.3)  # Sample values for p_window parameters
-        c_window_value = 0.5         # Sample value for c_window parameter
-        
-        # Create pre-computed window arrays
-        p_window_array = p_window(self.k_extrap, p_window_value[0], p_window_value[1])
-        
-        # Define parameter combinations for warm-up
-        window_combinations = [
-            {"P_window": None, "C_window": None, "label": "no windows"},
-            {"P_window": p_window_array, "C_window": None, "label": "only P_window"},
-            {"P_window": None, "C_window": c_window_value, "label": "only C_window"},
-            {"P_window": p_window_array, "C_window": c_window_value, "label": "both windows"}
-        ]
-        
-        # Common functions to warm up with all window combinations
-        core_functions = [
-            # Tuple format: (function_name, args excluding window params)
-            ("J_k_scalar", [dummy_P_for_transforms, self.X_spt, self._static_config, 
-                            self.k_extrap, self.k_final, self.id_pad, self.l, self.m]),
-            ("J_k_tensor", [dummy_P_for_transforms, self.X_IA_E, self._static_config, 
-                        self.k_extrap, self.k_final, self.id_pad, self.l, self.m]),
-            ("compute_term", [dummy_P_for_transforms, self.X_IA_E, self._static_config, 
-                            self.k_extrap, self.k_final, self.id_pad, self.l, self.m], 
-                            {"operation": lambda x: 2.0 * x})
-        ]
-        
-        # --- Function specific warm-up calls ---
-
-        # First warm up core functions with all window combinations
-        for combo in window_combinations:
-            for func_info in core_functions:
-                if len(func_info) == 2:
-                    func_name, args = func_info
-                    kwargs = {}
-                else:
-                    func_name, args, kwargs = func_info
-                    
-                # Add window parameters
-                kwargs["P_window"] = combo["P_window"]
-                kwargs["C_window"] = combo["C_window"]
-                
-                # Call the function
-                _ = globals()[func_name](*args, **kwargs)
-        
-        # Continue with existing warm-up calls for other components
-        _ = _apply_extrapolation(dummy_P_orig, EK=self._static_config.EK)
-        _ = _apply_extrapolation(dummy_P_extrap_raw, EK=self._static_config.EK)
-
-        # P_b should be on the k_final grid (size N)
-        dummy_P_b_for_fourier = dummy_P_final_grid_input * self.k_final**(-2.0) # Example nu=-2
-        
-        # Warm up fourier_coefficients with both window settings
-        _ = fourier_coefficients(dummy_P_b_for_fourier, self.m, self.N, C_window=None)
-        _ = fourier_coefficients(dummy_P_b_for_fourier, self.m, self.N, C_window=c_window_value)
-        
-        dummy_c_m_output = fourier_coefficients(dummy_P_b_for_fourier, self.m, self.N, C_window=None)
-
-        # convolution (window parameters don't apply directly)
-        if self.X_spt and len(self.X_spt) >= 6:
-            g_m_dummy_conv = self.X_spt[2][0]
-            g_n_dummy_conv = self.X_spt[3][0]
-            h_l_dummy_conv = self.X_spt[5][0]
-            two_part_l_dummy_conv = self.X_spt[4][0] if self.X_spt[4] is not None and len(self.X_spt[4]) > 0 else None
-            _ = convolution(dummy_c_m_output, dummy_c_m_output, g_m_dummy_conv, g_n_dummy_conv, h_l_dummy_conv, two_part_l_dummy_conv)
-
-        # Warm up special function groups with different window combinations
-        spt_kernel_funcs = ['_get_1loop', '_get_sig4', '_get_Pd1d2', '_get_Pd2d2', '_get_Pd1s2', '_get_Pd2s2', '_get_Ps2s2', '_get_sig3nl']
-        
-        for func_name in spt_kernel_funcs:
-            # Warm up with no windows and with both windows (representative cases)
-            _ = globals()[func_name](dummy_P_for_transforms, self.X_spt, self._static_config, 
-                                    self.k_extrap, self.k_final, self.id_pad, self.l, self.m, 
-                                    P_window=None, C_window=None)
-            _ = globals()[func_name](dummy_P_for_transforms, self.X_spt, self._static_config, 
-                                    self.k_extrap, self.k_final, self.id_pad, self.l, self.m, 
-                                    P_window=p_window_array, C_window=c_window_value)
-        
-        lpt_kernel_funcs = ['_get_Pb1L', '_get_Pb1L_2', '_get_Pb1L_b2L', '_get_Pb2L', '_get_Pb2L_2']
-        
-        for func_name in lpt_kernel_funcs:
-            # Warm up with no windows and with both windows
-            _ = globals()[func_name](dummy_P_for_transforms, self.X_lpt, self._static_config, 
-                                    self.k_extrap, self.k_final, self.id_pad, self.l, self.m, 
-                                    P_window=None, C_window=None)
-            _ = globals()[func_name](dummy_P_for_transforms, self.X_lpt, self._static_config, 
-                                    self.k_extrap, self.k_final, self.id_pad, self.l, self.m, 
-                                    P_window=p_window_array, C_window=c_window_value)
-
-        # Warm up OV
-        _ = globals()['_get_OV'](dummy_P_for_transforms, self.X_OV, 
-                                self._static_config, self.k_extrap, self.k_final, 
-                                self.id_pad, self.l, self.m, 
-                                P_window=None, C_window=None)
-        _ = globals()['_get_OV'](dummy_P_for_transforms, self.X_OV, 
-                                self._static_config, self.k_extrap, self.k_final, 
-                                self.id_pad, self.l, self.m, 
-                                P_window=p_window_array, C_window=c_window_value)
-
-        # Special cases with list-based X parameters
-        special_funcs = [
-            {'name': '_get_P_0EtE', 'X': [self.X_IA_tij_feG2, self.X_IA_deltaE1]},
-            {'name': '_get_P_E2tE', 'X': [self.X_IA_tij_heG2, self.X_IA_A]},
-            {'name': '_get_P_tEtE', 'X': [self.X_IA_tij_F2F2, self.X_IA_tij_G2G2, self.X_IA_tij_F2G2]},
-            {'name': '_get_P_d2tE', 'X': [self.X_IA_gb2_F2, self.X_IA_gb2_G2]},
-            {'name': '_get_P_s2tE', 'X': [self.X_IA_gb2_S2F2, self.X_IA_gb2_S2G2]}
-        ]
-        
-        for func_info in special_funcs:
-            # Warm up with no windows and with both windows
-            _ = globals()[func_info['name']](dummy_P_for_transforms, func_info['X'], 
-                                            self._static_config, self.k_extrap, self.k_final, 
-                                            self.id_pad, self.l, self.m, 
-                                            P_window=None, C_window=None)
-            _ = globals()[func_info['name']](dummy_P_for_transforms, func_info['X'], 
-                                            self._static_config, self.k_extrap, self.k_final, 
-                                            self.id_pad, self.l, self.m, 
-                                            P_window=p_window_array, C_window=c_window_value)
-        
-        # _get_P_0tE has a different signature with k_original
-        _ = globals()['_get_P_0tE'](dummy_P_for_transforms, [self.X_spt, self.X_sptG], 
-                                self._static_config, self.k_original, self.k_extrap, 
-                                self.k_final, self.id_pad, self.l, self.m, 
-                                P_window=None, C_window=None)
-        _ = globals()['_get_P_0tE'](dummy_P_for_transforms, [self.X_spt, self.X_sptG], 
-                                self._static_config, self.k_original, self.k_extrap, 
-                                self.k_final, self.id_pad, self.l, self.m, 
-                                P_window=p_window_array, C_window=c_window_value)
-
-        # Functions with (P_orig, k_original) signature - these don't use window parameters
-        _ = globals()['_get_P_Btype2'](dummy_P_orig, self.k_original)
-        _ = globals()['_get_P_deltaE2'](dummy_P_orig, self.k_original)
-
-
-        # Warm up core JPT functions
-        # Warm up _b3nl_core with different window combinations 
-        _ = _b3nl_core(self.X_spt, self._static_config, self.k_extrap, self.k_final, 
-                    self.id_pad, self.l, self.m, dummy_P_for_transforms, 
-                    P_window=None, C_window=None)
-        _ = _b3nl_core(self.X_spt, self._static_config, self.k_extrap, self.k_final, 
-                    self.id_pad, self.l, self.m, dummy_P_for_transforms, 
-                    P_window=p_window_array, C_window=c_window_value)
-                    
-        # Warm up _lpt_NL_core
-        _ = _lpt_NL_core(self.X_lpt, self.X_spt, self._static_config, self.k_extrap, 
-                        self.k_final, self.id_pad, self.l, self.m, dummy_P_for_transforms, 
-                        P_window=None, C_window=None)
-        _ = _lpt_NL_core(self.X_lpt, self.X_spt, self._static_config, self.k_extrap, 
-                        self.k_final, self.id_pad, self.l, self.m, dummy_P_for_transforms, 
-                        P_window=p_window_array, C_window=c_window_value)
-                        
-        # Warm up _IA_tt_core
-        _ = _IA_tt_core(self.X_IA_E, self.X_IA_B, self._static_config, self.k_extrap, 
-                    self.k_final, self.id_pad, self.l, self.m, dummy_P_for_transforms, 
-                    P_window=None, C_window=None)
-        _ = _IA_tt_core(self.X_IA_E, self.X_IA_B, self._static_config, self.k_extrap, 
-                    self.k_final, self.id_pad, self.l, self.m, dummy_P_for_transforms, 
-                    P_window=p_window_array, C_window=c_window_value)
-                    
-        # Warm up _IA_mix_core
-        _ = _IA_mix_core(self.X_IA_A, self.X_IA_DEE, self.X_IA_DBB, self._static_config, 
-                        self.k_original, self.k_extrap, self.k_final, self.id_pad, 
-                        self.l, self.m, dummy_P_for_transforms, 
-                        P_window=None, C_window=None)
-        _ = _IA_mix_core(self.X_IA_A, self.X_IA_DEE, self.X_IA_DBB, self._static_config, 
-                        self.k_original, self.k_extrap, self.k_final, self.id_pad, 
-                        self.l, self.m, dummy_P_for_transforms, 
-                        P_window=p_window_array, C_window=c_window_value)
-        
-        # Warm up _IA_ta_core
-        _ = _IA_ta_core(self.X_IA_deltaE1, self.X_IA_0E0E, self.X_IA_0B0B, self._static_config, 
-                        self.k_original, self.k_extrap, self.k_final, 
-                        self.id_pad, self.l, self.m, dummy_P_for_transforms,
-                        P_window=None, C_window=None)
-        _ = _IA_ta_core(self.X_IA_deltaE1, self.X_IA_0E0E, self.X_IA_0B0B, self._static_config, 
-                        self.k_original, self.k_extrap, self.k_final, 
-                        self.id_pad, self.l, self.m, dummy_P_for_transforms,
-                        P_window=p_window_array, C_window=c_window_value)
-        
-        # Warm up _IA_ct_core
-        _ = _IA_ct_core(self.X_spt, self.X_sptG, self.X_IA_tij_feG2, self.X_IA_tij_heG2, self.X_IA_A, self.X_IA_tij_F2F2, self.X_IA_deltaE1, self.X_IA_tij_G2G2, self.X_IA_tij_F2G2, 
-                        self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=None, C_window=None)
-        _ = _IA_ct_core(self.X_spt, self.X_sptG, self.X_IA_tij_feG2, self.X_IA_tij_heG2, self.X_IA_A, self.X_IA_tij_F2F2, self.X_IA_deltaE1, self.X_IA_tij_G2G2, self.X_IA_tij_F2G2, 
-                        self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)
-        
-        # Warm up _gI_ct_core
-        _ = _gI_ct_core(self.X_IA_gb2_F2, self.X_IA_gb2_G2, self.X_IA_gb2_S2F2, self.X_IA_gb2_S2G2, 
-                        self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=None, C_window=None)
-        _ = _gI_ct_core(self.X_IA_gb2_F2, self.X_IA_gb2_G2, self.X_IA_gb2_S2F2, self.X_IA_gb2_S2G2, 
-                        self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)
-        
-        # Warm up _gI_ta_core
-        _ = _gI_ta_core(self.X_IA_gb2_F2, self.X_IA_gb2_fe, self.X_IA_gb2_S2F2, self.X_IA_gb2_S2fe,
-                        self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=None, C_window=None)
-        _ = _gI_ta_core(self.X_IA_gb2_F2, self.X_IA_gb2_fe, self.X_IA_gb2_S2F2, self.X_IA_gb2_S2fe,    
-                        self._static_config, self.k_original, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)        
-        
-        # Warm up _gI_tt_core
-        _ = _gI_tt_core(self.X_IA_gb2_S2he, self.X_IA_gb2_he, self._static_config, 
-                        self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=None, C_window=None)
-        _ = _gI_tt_core(self.X_IA_gb2_S2he, self.X_IA_gb2_he, self._static_config, 
-                        self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-                        dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)
-        
-        # Warm up _kPol_core
-        # _ = _kPol_core(self.X_kP1, self.X_kP2, self.X_kP3, self._static_config,
-        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-        #                 dummy_P_for_transforms, P_window=None, C_window=None)
-        # _ = _kPol_core(self.X_kP1, self.X_kP2, self.X_kP3, self._static_config, 
-        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-        #                 dummy_P_for_transforms, P_window=p_window_array, C_window=c_window_value)
-        _ = self.kPol(dummy_P_orig, P_window=None, C_window=None)
-        _ = self.kPol(dummy_P_orig, P_window=p_window_array, C_window=c_window_value)
-        print("JIT warm-up completed.")
 
     @jax_cached_property
     def X_spt(self):
@@ -629,7 +375,12 @@ class JAXPT:
             P_new = func(P, P_window=P_window, C_window=C_window)
             return P_new
         
-        param_value = pk_params.get(pk_diff_param, 0.12)  # Default value for Omega_c if not provided
+        if pk_method == 'jax-cosmo':
+            param_value = pk_params.get(pk_diff_param, 0.12)  # Default value for Omega_c if not provided
+        elif pk_method == 'discoeb':
+            if pk_diff_param == 'Omega_c': # Default wasn't changed by user
+                pk_diff_param = 'Omegam'  # discoeb uses Omegam instead of Omega_c
+            param_value = pk_params.get(pk_diff_param, 0.3099)  
         param_value = jnp.array(param_value, dtype=jnp.float64)
         if diff_method == 'jacfwd':
             result = jacfwd(diff_func)(param_value)
@@ -735,7 +486,7 @@ class JAXPT:
         # jax.profiler.stop_trace()
         # turn perturbations into power spectra
         Pkm = get_power( k=kmodes, y=y[:,0,:], idx=4, param=param )
-
+        Pkm = jnp.interp(self.k_original, kmodes, Pkm)
         return Pkm
 
         
@@ -1132,7 +883,7 @@ if __name__ == "__main__":
 
     k = jnp.logspace(-3, 1, 1000)
     jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
-    vjp_result = jpt.diff(function='IA_tt', diff_method='vjp')[0]
+    vjp_result = jpt.diff(pk_method='discoeb', function='IA_tt', diff_method='vjp')[0]
     # jvp_result = jpt.diff(function='IA_tt', diff_method='jvp')
     # jacfwd_result = jpt.diff(function='IA_tt', diff_method='jacfwd')
     # P = jpt._jax_cosmo_pk_generator(param_value=0.12, diff_param='Omega_c', P_params={})
