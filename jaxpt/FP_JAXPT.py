@@ -7,6 +7,11 @@ from fastpt import FASTPT as FPT
 from jaxpt.jax_utils import p_window, c_window, jax_k_extend
 from jaxpt.jax_utils import P_13_reg, Y1_reg_NL, Y2_reg_NL, P_IA_B, P_IA_deltaE2, P_IA_13F, P_IA_13G
 config.update("jax_enable_x64", True)
+jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
+jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+# jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
+import os
 import functools
 from jax.numpy.fft import ifft, irfft
 from dataclasses import dataclass
@@ -209,98 +214,7 @@ class JAXPT:
         for func_name in api_functions:
             func = getattr(self, func_name)
             for settings in window_settings:
-                _ = func(dummy_P, **settings)
-        
-        # # Warm up _get_ methods used by SPT calculations
-        # spt_get_methods = [
-        #     '_get_1loop', '_get_sig4', '_get_Pd1d2', '_get_Pd2d2', 
-        #     '_get_Pd1s2', '_get_Pd2s2', '_get_Ps2s2', '_get_sig3nl'
-        # ]
-        
-        # for method_name in spt_get_methods:
-        #     for settings in window_settings:
-        #         try:
-        #             _ = globals()[method_name](
-        #                 dummy_P, self.X_spt, self._static_config,
-        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-        #                 **settings
-        #             )
-        #         except Exception:
-        #             pass  # Silently continue if method doesn't exist or has errors
-        
-        # # Warm up _get_ methods used by LPT calculations
-        # lpt_get_methods = ['_get_Pb1L', '_get_Pb1L_2', '_get_Pb1L_b2L', '_get_Pb2L', '_get_Pb2L_2']
-        
-        # for method_name in lpt_get_methods:
-        #     for settings in window_settings:
-        #         try:
-        #             _ = globals()[method_name](
-        #                 dummy_P, self.X_lpt, self._static_config,
-        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-        #                 **settings
-        #             )
-        #         except Exception:
-        #             pass
-        
-        # # Warm up tensor term get methods
-        # special_get_methods = [
-        #     {'name': '_get_P_0EtE', 'X': [self.X_IA_tij_feG2, self.X_IA_deltaE1]},
-        #     {'name': '_get_P_E2tE', 'X': [self.X_IA_tij_heG2, self.X_IA_A]},
-        #     {'name': '_get_P_tEtE', 'X': [self.X_IA_tij_F2F2, self.X_IA_tij_G2G2, self.X_IA_tij_F2G2]},
-        #     {'name': '_get_P_d2tE', 'X': [self.X_IA_gb2_F2, self.X_IA_gb2_G2]},
-        #     {'name': '_get_P_s2tE', 'X': [self.X_IA_gb2_S2F2, self.X_IA_gb2_S2G2]}
-        # ]
-        
-        # for method_info in special_get_methods:
-        #     for settings in window_settings:
-        #         try:
-        #             _ = globals()[method_info['name']](
-        #                 dummy_P, method_info['X'], self._static_config,
-        #                 self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
-        #                 **settings
-        #             )
-        #         except Exception:
-        #             pass
-        
-        # # Warm up _get_P_0tE which has a different signature
-        # try:
-        #     _ = globals()['_get_P_0tE'](
-        #         dummy_P, [self.X_spt, self.X_sptG], self._static_config, 
-        #         self.k_original, self.k_extrap, self.k_final, 
-        #         self.id_pad, self.l, self.m, 
-        #         P_window=None, C_window=None
-        #     )
-        # except Exception:
-        #     pass
-        
-        # # Warm up methods that don't use window parameters
-        # try:
-        #     _ = globals()['_get_P_Btype2'](dummy_P, self.k_original)
-        #     _ = globals()['_get_P_deltaE2'](dummy_P, self.k_original)
-        # except Exception:
-        #     pass
-        
-        # # Warm up compute_term with different X parameters and operations
-        # key_tensors = [
-        #     self.X_IA_E, self.X_kP1, self.X_kP2, self.X_kP3
-        # ]
-        
-        # operations = [None, lambda x: 2.0 * x, lambda x: x / (80 * jnp.pi ** 2)]
-        
-        # for X in key_tensors:
-        #     for op in operations:
-        #         for settings in window_settings:
-        #             try:
-        #                 _ = compute_term(
-        #                     dummy_P, X, self._static_config, self.k_extrap, self.k_final, 
-        #                     self.id_pad, self.l, self.m, operation=op, **settings
-        #                 )
-        #             except Exception:
-        #                 pass
-        
-        # # Specifically warm up kPol which was showing performance issues
-        # _ = self.kPol(dummy_P, P_window=None, C_window=None)
-        # _ = self.kPol(dummy_P, P_window=jnp.array([0.2, 0.2]), C_window=None)
+                _ = func(dummy_P, **settings) 
         
         print("JIT warm-up completed.")
 
@@ -697,9 +611,6 @@ class JAXPT:
         return _OV_core(P, self.X_OV, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                        P_window=P_window, C_window=C_window)
 
-    def IA_der(self, P):
-        return (self.k_original**2)*P
-
     def kPol(self, P, P_window=None, C_window=None):
         return _kPol_core(self.X_kP1, self.X_kP2, self.X_kP3, self._static_config,
                           self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
@@ -710,6 +621,8 @@ class JAXPT:
     def diff(self, pk_method='jax-cosmo', pk_params={}, pk_diff_param='Omega_c', 
          function=None, P_window=None, C_window=None, diff_method=None, tangent=None):    
         
+        if function is None:
+            raise ValueError("No function provided for differentiation. Please specify a function name.")
         func = getattr(self, function)
         def diff_func(param_value):
             P = self._pk_generator(pk_method, param_value, pk_diff_param, pk_params)
@@ -728,8 +641,11 @@ class JAXPT:
             return jvp_result, primal_out
         elif diff_method == 'vjp':
             primal_out, vjp_fn = vjp(diff_func, param_value)
-            if tangent is None or not isinstance(tangent, tuple):
-                tangent = tuple(jnp.ones_like(r) for r in primal_out)
+            if tangent is None:
+                if isinstance(primal_out, tuple):
+                    tangent = tuple(jnp.ones_like(r) for r in primal_out)
+                else: #OV case
+                    tangent = jnp.ones_like(primal_out, dtype=jnp.float64)
             vjp_result = vjp_fn(tangent)[0]
             return vjp_result, primal_out
         else:
@@ -1216,14 +1132,13 @@ if __name__ == "__main__":
 
     k = jnp.logspace(-3, 1, 1000)
     jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
-    vjp_result = jpt.diff(function='IA_tt', diff_method='vjp')
-    jvp_result = jpt.diff(function='IA_tt', diff_method='jvp')
-    jacfwd_result = jpt.diff(function='IA_tt', diff_method='jacfwd')
-    P = jpt._jax_cosmo_pk_generator(param_value=0.12, diff_param='Omega_c', P_params={})
-    result = jpt.IA_tt(P)
+    vjp_result = jpt.diff(function='IA_tt', diff_method='vjp')[0]
+    # jvp_result = jpt.diff(function='IA_tt', diff_method='jvp')
+    # jacfwd_result = jpt.diff(function='IA_tt', diff_method='jacfwd')
+    # P = jpt._jax_cosmo_pk_generator(param_value=0.12, diff_param='Omega_c', P_params={})
+    # result = jpt.IA_tt(P)
 
-    print(np.allclose(vjp_result[1], result))
-    print(np.allclose(jvp_result[1], result))
+    print(vjp_result)
 
     # Result and diff result are a tuple of two arrays, plot them to visualize
     # import matplotlib.pyplot as plt
