@@ -6,6 +6,7 @@ import os
 from fastpt import FASTPT, FPTHandler
 from jax import vjp
 import jax 
+from time import time
 
 data_path = os.path.join(os.path.dirname(__file__), 'benchmarking', 'Pk_test.dat')
 d = np.loadtxt(data_path)
@@ -112,6 +113,8 @@ def fpt():
     return FASTPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad)
 
 ############## Equality Tests ##############
+## While they do test the same thing as the benchmarks, this will test whatever version of fastpt is installed specifically
+## (If something is changed in fastpt, its effects will be shown here)
 def test_one_loop_dd_bias_b3nl(jpt, fpt):
     old = fpt.one_loop_dd_bias_b3nl(P, P_window=np.array([0.2, 0.2]), C_window=C_window)
     new = jpt.one_loop_dd_bias_b3nl(P, P_window=P_window, C_window=C_window)
@@ -209,155 +212,87 @@ def test_kPol(jpt, fpt):
         assert False, f"Arrays are not the same length, old: {len(old)} new: {len(new)}"
 
 
-########## Differentiability Tests ##########
-def test_IA_mix_diff(jpt):
-    def compute_ia_mix(P):
-        return jpt.IA_mix(P, P_window=P_window, C_window=C_window)
+##### Timing Tests #####
+@pytest.fixture
+def jpt_warm():
+    n_pad = int(0.5 * len(k))
+    jpt = JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=True)
+    return jpt
 
-    result_value, vjp_fn = vjp(compute_ia_mix, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
 
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
+def test_b3nl_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.one_loop_dd_bias_b3nl(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-def test_IA_tt_diff(jpt):
-    def compute_ia_tt(P):
-        return jpt.IA_tt(P, C_window=C_window)
+def test_lpt_NL_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.one_loop_dd_bias_lpt_NL(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-    result_value, vjp_fn = vjp(compute_ia_tt, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
+def test_IA_tt_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.IA_tt(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
+def test_IA_mix_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.IA_mix(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-def test_IA_ta_diff(jpt):
-    def compute_ia_ta(P):
-        return jpt.IA_ta(P, C_window=C_window)
+def test_IA_ta_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.IA_ta(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-    result_value, vjp_fn = vjp(compute_ia_ta, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
+def test_IA_ct_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.IA_ct(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
+def test_gI_ct_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.gI_ct(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-def test_IA_ct_diff(jpt):
-    def compute_ia_ct(P):
-        return jpt.IA_ct(P, C_window=C_window)
+def test_gI_ta_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.gI_ta(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-    result_value, vjp_fn = vjp(compute_ia_ct, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
+def test_gI_tt_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.gI_tt(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
+def test_kPol_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.kPol(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"
 
-def test_gI_ct_diff(jpt):
-    def compute_gI_ct(P):
-        return jpt.gI_ct(P, C_window=C_window)
-
-    result_value, vjp_fn = vjp(compute_gI_ct, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
-
-def test_gI_ta_diff(jpt):
-    def compute_gI_ta(P):
-        return jpt.gI_ta(P, C_window=C_window)
-
-    result_value, vjp_fn = vjp(compute_gI_ta, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
-
-def test_gI_tt_diff(jpt):
-    def compute_gI_tt(P):
-        return jpt.gI_tt(P, C_window=C_window)
-
-    result_value, vjp_fn = vjp(compute_gI_tt, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
-
-def test_kPol_diff(jpt):
-    def compute_kPol(P):
-        return jpt.kPol(P, C_window=C_window)
-
-    result_value, vjp_fn = vjp(compute_kPol, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
-
-def test_b3nl_diff(jpt):
-    def compute_b3nl(P):
-        return jpt.one_loop_dd_bias_b3nl(P, P_window=P_window, C_window=C_window)
-
-    result_value, vjp_fn = vjp(compute_b3nl, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
-
-def test_lpt_NL_diff(jpt):
-    def compute_lpt_NL(P):
-        return jpt.one_loop_dd_bias_lpt_NL(P, P_window=P_window, C_window=C_window)
-
-    result_value, vjp_fn = vjp(compute_lpt_NL, P)
-    tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # Compute the gradient with respect to P
-    gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-
-    assert gradient is not None, "Gradient should not be None"
-    assert gradient.shape == P.shape, f"Gradient shape {gradient.shape} does not match input shape {P.shape}"
-    assert np.all(np.isfinite(gradient)), "Gradient contains non-finite values"
-    assert not np.any(np.isnan(gradient)), "Gradient contains NaN values"
-    assert not np.any(np.isinf(gradient)), "Gradient contains infinite values"
-
-# Add test funcs differentiability test
+def test_OV_timing(jpt_warm):
+    start_jpt = time()
+    jpt_warm.OV(P, P_window=P_window, C_window=C_window)
+    end_jpt = time()
+    jaxpt_time = end_jpt - start_jpt
+    assert jaxpt_time < 0.001, f"JAXPT took too long: {jaxpt_time:.4f}s"

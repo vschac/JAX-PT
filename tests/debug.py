@@ -35,38 +35,27 @@ if __name__ == "__main__":
     #     print(f"Relative difference: {np.max(np.abs((jres - fres) / jres))}")
 
 
-    # from jaxpt.jax_utils import P_IA_deltaE2 as jP_IA_deltaE2
-    # from fastpt.IA.IA_ta import P_IA_deltaE2 as fP_IA_deltaE2
-    # # jP = jpt.one_loop_dd_bias_b3nl(P, P_window=P_window, C_window=C_window)
-    # # fP, _ = fpt.J_k_scalar(P, fpt.X_spt, -2, P_window=np.array([0.2,0.2]), C_window=C_window)
-    # # print(np.allclose(jP, fP))
-    # # print(np.allclose(jpt.k_extrap, fpt.k_extrap))
-    # jres = jP_IA_deltaE2(k, P)
-    # fres = fP_IA_deltaE2(k, P)
-    # print(f"Close enough? {np.allclose(jres, fres)}")
-    # print(f"Max difference: {np.max(np.abs(jres - fres))}")
-    # print(f"Relative difference: {np.max(np.abs((jres - fres) / jres))}")
+    from jaxpt.jax_utils import P_IA_B as jP_IA_B
+    from jaxpt.jax_utils import Y1_reg_NL as jY1
+    from fastpt.IA.IA_ABD import P_IA_B as fP_IA_B
+    from fastpt.utils.matter_power_spt import Y1_reg_NL as fY1
+    from jaxpt.FP_JAXPT import J_k_scalar
+    jPs, _ = J_k_scalar(P, jpt.X_spt, jpt._static_config, jpt.k_extrap, jpt.k_final, jpt.id_pad, jpt.l, jpt.m,
+                         P_window=P_window, C_window=C_window)
+    fPs, _ = fpt.J_k_scalar(P, fpt.X_spt, -2, P_window=np.array([0.2,0.2]), C_window=C_window)
+    jres = jP_IA_B(jpt.k_extrap, jPs)
+    fres = fP_IA_B(fpt.k_extrap, fPs)
+    print(f"Close enough? {np.allclose(jres, fres)}")
+    print(f"Max difference: {np.max(np.abs(jres - fres))}")
+    print(f"Relative difference: {np.max(np.abs((jres - fres) / jres))}")
 
-    # import matplotlib.pyplot as plt
-    # # Data has no positve values so plot the negative values
-    # plt.plot(k, jres, label='JAXPT')
-    # plt.plot(k, fres, label='FASTPT', linestyle='--')
-    # plt.xscale('log')
-    # plt.yscale('log')
-    # plt.xlabel('k')
-    # plt.ylabel('P(k)')
-    # plt.legend()
-    # plt.show()
+    import matplotlib.pyplot as plt
+    plt.plot(jpt.k_extrap, jres, label='JAXPT')
+    plt.plot(fpt.k_extrap, fres, label='FASTPT', linestyle='--')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('k')
+    plt.ylabel('P(k)')
+    plt.legend()
+    plt.show()
 
-
-
-    # from time import time
-
-    # def compute_ia_mix(P):
-    #     return jpt.IA_mix(P, P_window=P_window, C_window=C_window)
-    # t0 = time()
-    # result_value, vjp_fn = vjp(compute_ia_mix, P)
-    # tangent_vectors = tuple(jnp.ones_like(result) for result in result_value)
-    # gradient = vjp_fn(tangent_vectors)[0]  # [0] because vjp_fn returns a tuple
-    # t1= time()
-    # print(f"JAXPT vjp time: {t1 - t0:.4f} seconds")

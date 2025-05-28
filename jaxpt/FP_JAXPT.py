@@ -209,7 +209,22 @@ class JAXPT:
             func = getattr(self, func_name)
             for settings in window_settings:
                 _ = func(dummy_P, **settings) 
-        
+
+        # Pk generation warm-up
+        _ = jit_jax_cosmo_pk_generator(0.012, 'Omega_c', {}, self.k_original) 
+        # Currently only empty and full dicts are compiled, any params dict that is not full will trigger recompilation
+        representative_pk_params_all = {
+            'Omega_c': 0.12, 
+            'Omega_b': 0.022,  
+            'h': 0.69,
+            'n_s': 0.96,
+            'sigma8': 0.8,
+            'Omega_k': 0.0, 
+            'w0': -1.0,
+            'wa': 0.0,
+        }
+        _ = jit_jax_cosmo_pk_generator(0.12, 'Omega_c', representative_pk_params_all, self.k_original)
+
         print("JIT warm-up completed.")
 
 
@@ -404,35 +419,11 @@ class JAXPT:
 
     def _pk_generator(self, pk_method, param_value, diff_param, P_params):
         if pk_method == 'jax-cosmo':
-            return self._jax_cosmo_pk_generator(param_value, diff_param, P_params)
+            return jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, self.k_original)
         elif pk_method == 'discoeb':
             return self._discoeb_pk_generator(param_value, diff_param, P_params)
         else:
             raise ValueError(f"Unsupported power spectrum generation method: {pk_method}")
-
-
-    def _jax_cosmo_pk_generator(self, param_value, diff_param, P_params):
-        """Generate power spectrum using jax-cosmo"""
-        from jax_cosmo import Cosmology, power
-        
-        cosmo_dict = {
-            'Omega_c': P_params.get('Omega_c', 0.12), 
-            'Omega_b': P_params.get('Omega_b', 0.022),  
-            'h': P_params.get('h', 0.69),
-            'n_s': P_params.get('n_s', 0.96),
-            'sigma8': P_params.get('sigma8', 0.8),
-            'Omega_k': P_params.get('Omega_k', 0.0), 
-            'w0': P_params.get('w0', -1.0),
-            'wa': P_params.get('wa', 0.0),
-        }
-
-        if diff_param not in cosmo_dict:
-            raise ValueError(f"Parameter '{diff_param}' not found in cosmology parameters.")
-        
-        # Explicitly use the differentiation parameter
-        cosmo_dict[diff_param] = param_value
-        new_cosmo = Cosmology(**cosmo_dict)
-        return power.linear_matter_power(new_cosmo, self.k_original)
     
     def get_filter_jit():
         """Lazily import equinox.filter_jit only when needed."""
@@ -489,6 +480,29 @@ class JAXPT:
         Pkm = jnp.interp(self.k_original, kmodes, Pkm)
         return Pkm
 
+@partial(jit, static_argnames=["diff_param"])
+def jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, k_original):
+    """Generate power spectrum using jax-cosmo"""
+    from jax_cosmo import Cosmology, power
+    
+    cosmo_dict = {
+        'Omega_c': P_params.get('Omega_c', 0.12), 
+        'Omega_b': P_params.get('Omega_b', 0.022),  
+        'h': P_params.get('h', 0.69),
+        'n_s': P_params.get('n_s', 0.96),
+        'sigma8': P_params.get('sigma8', 0.8),
+        'Omega_k': P_params.get('Omega_k', 0.0), 
+        'w0': P_params.get('w0', -1.0),
+        'wa': P_params.get('wa', 0.0),
+    }
+
+    if diff_param not in cosmo_dict:
+        raise ValueError(f"Parameter '{diff_param}' not found in cosmology parameters.")
+    
+    # Explicitly use the differentiation parameter
+    cosmo_dict[diff_param] = param_value
+    new_cosmo = Cosmology(**cosmo_dict)
+    return power.linear_matter_power(new_cosmo, k_original)
         
 
 @dataclass(frozen=True)
@@ -656,6 +670,7 @@ def _IA_ct_core(X_spt, X_sptG, X_IA_tij_feG2, X_IA_tij_heG2, X_IA_A, X_IA_tij_F2
 
     return P_0tE, P_0EtE, P_E2tE, P_tEtE
 
+@partial(jit, static_argnames=["static_cfg"])
 def _gI_ct_core(X_IA_gb2_F2, X_IA_gb2_G2, X_IA_gb2_S2F2, X_IA_gb2_S2G2, 
                 static_cfg, k_extrap, k_final, id_pad, l, m,
                 P, P_window=None, C_window=None):
@@ -677,6 +692,7 @@ def _gI_ct_core(X_IA_gb2_F2, X_IA_gb2_G2, X_IA_gb2_S2F2, X_IA_gb2_S2G2,
 
     return P_d2tE, P_s2tE
 
+@partial(jit, static_argnames=["static_cfg"])
 def _gI_ta_core(X_IA_gb2_F2, X_IA_gb2_fe, X_IA_gb2_S2F2, X_IA_gb2_S2fe, 
                 static_cfg, k_extrap, k_final, id_pad, l, m,
                 P, P_window=None, C_window=None):
@@ -692,6 +708,7 @@ def _gI_ta_core(X_IA_gb2_F2, X_IA_gb2_fe, X_IA_gb2_S2F2, X_IA_gb2_S2fe,
     P_d2E, P_d20E, P_s2E, P_s20E = _apply_extrapolation(P_d2E, P_d20E, P_s2E, P_s20E, EK=static_cfg.EK)
     return 2 * P_d2E, 2 * P_d20E, 2 * P_s2E, 2 * P_s20E
 
+@partial(jit, static_argnames=["static_cfg"])
 def _gI_tt_core(X_IA_gb2_S2he, X_IA_gb2_he, static_cfg, k_extrap, k_final, id_pad, l, m,
                 P, P_window=None, C_window=None):
     P_s2E2, _ = J_k_tensor(P, X_IA_gb2_S2he, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -703,6 +720,7 @@ def _gI_tt_core(X_IA_gb2_S2he, X_IA_gb2_he, static_cfg, k_extrap, k_final, id_pa
     P_d2E2 = 2 * P_d2E2
     return P_s2E2, P_d2E2
 
+@partial(jit, static_argnames=["static_cfg"])
 def _kPol_core(X_kP1, X_kP2, X_kP3, static_cfg, k_extrap, k_final, id_pad, l, m,
                P, P_window=None, C_window=None):
     P_kP1, _ = J_k_tensor(P, X_kP1, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -843,7 +861,7 @@ def J_k_tensor(P, X, static_cfg: StaticConfig,
     
     return P_fin, A_out
 
-@jit
+@partial(jit, static_argnames=["N"])
 def fourier_coefficients(P_b, m, N, C_window=None):
     from jax.numpy.fft import rfft
 
@@ -883,24 +901,17 @@ if __name__ == "__main__":
 
     k = jnp.logspace(-3, 1, 1000)
     jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
-    vjp_result = jpt.diff(pk_method='discoeb', function='IA_tt', diff_method='vjp')[0]
-    # jvp_result = jpt.diff(function='IA_tt', diff_method='jvp')
+    # vjp_result = jpt.diff(pk_method='discoeb', function='IA_tt', diff_method='vjp')[0]
+    pk_params = {
+        'Omega_c': 0.12,  # Cold dark matter density parameter
+        'Omega_b': 0.022,  # Baryon density parameter
+        'h': 0.69,         # Dimensionless Hubble constant
+        'sigma8': 0.8,    # Amplitude of matter fluctuations
+    }
+    t0 = time()
+    jvp_result = jpt.diff(pk_params=pk_params, function='IA_tt', diff_method='jvp')
+    t1 = time()
+    print(f"JVP computation time: {t1 - t0:.4f} seconds")
     # jacfwd_result = jpt.diff(function='IA_tt', diff_method='jacfwd')
     # P = jpt._jax_cosmo_pk_generator(param_value=0.12, diff_param='Omega_c', P_params={})
     # result = jpt.IA_tt(P)
-
-    print(vjp_result)
-
-    # Result and diff result are a tuple of two arrays, plot them to visualize
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(10, 5))
-    # plt.plot(jpt.k_original, result[1], label='IA_tt Result', color='blue')
-    # plt.plot(jpt.k_original, diff_result[1], label='IA_tt Diff Result', color='red', linestyle='--')
-    # plt.xscale('log')
-    # plt.yscale('log')
-    # plt.xlabel('k (1/Mpc)')
-    # plt.ylabel('Power Spectrum')
-    # plt.title('IA_tt Power Spectrum and its Derivative')
-    # plt.legend()
-    # plt.grid()
-    # plt.show()
