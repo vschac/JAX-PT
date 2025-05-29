@@ -179,7 +179,7 @@ class JAXPT:
     def _simple_warmup(self):
         """Streamlined JIT warm-up focused on top-level API functions and internal computation methods."""
         print("Starting JIT warm-up...")
-        
+        t0 = time()
         # Prepare test inputs
         dummy_P = jnp.ones_like(self.k_original)
         window_settings = [
@@ -191,6 +191,7 @@ class JAXPT:
         
         # Warm up all the top-level API functions
         api_functions = [
+            "one_loop_dd",
             "one_loop_dd_bias_b3nl", 
             "one_loop_dd_bias_lpt_NL", 
             "IA_tt", 
@@ -224,8 +225,8 @@ class JAXPT:
             'wa': 0.0,
         }
         _ = jit_jax_cosmo_pk_generator(0.12, 'Omega_c', representative_pk_params_all, self.k_original)
-
-        print("JIT warm-up completed.")
+        t1 = time()
+        print(f"JIT warm-up completed in {t1-t0:.2f} seconds.")
 
 
     @jax_cached_property
@@ -327,7 +328,11 @@ class JAXPT:
     def k_final(self):
         return self.__k_final
         
+    def one_loop_dd(self, P, P_window=None, C_window=None):
+        return _one_loop_core(self.X_spt, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
+                          P, P_window=P_window, C_window=C_window)
     
+    #NOTE: this function has a signature change from FASTPT, it now no longer returns P1loop and Ps
     def one_loop_dd_bias_b3nl(self, P, P_window=None, C_window=None):
         return _b3nl_core(self.X_spt, self._static_config, self.k_extrap, self.k_final, self.id_pad, self.l, self.m,
                           P, P_window=P_window, C_window=C_window)
@@ -523,16 +528,23 @@ def _apply_extrapolation(*args, EK=None):
 
 ##### Core for original functions #####
 @partial(jit, static_argnames=["static_cfg"])
-def _b3nl_core(X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
-               P, P_window=None, C_window=None):
-    P22_coef = jnp.array([2*1219/1470., 2*671/1029., 2*32/1715., 2*1/3., 2*62/35., 2*8/35., 1/3.])
+def _one_loop_core(X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                   P, P_window=None, C_window=None):
     Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
+    P22_coef = jnp.array([2*1219/1470., 2*671/1029., 2*32/1715., 2*1/3., 2*62/35., 2*8/35., 1/3.])
     P22_mat = jnp.multiply(P22_coef, jnp.transpose(mat))
     P22 = jnp.sum(P22_mat, axis=1)
     P13 = P_13_reg(k_extrap, Ps)
-
     P_1loop = P22 + P13
+    P_1loop, Ps, = _apply_extrapolation(P_1loop, Ps, EK=static_cfg.EK)
+    return P_1loop, Ps
+
+@partial(jit, static_argnames=["static_cfg"])
+def _b3nl_core(X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+               P, P_window=None, C_window=None):
+    Ps, mat = J_k_scalar(P, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
+                         P_window=P_window, C_window=C_window)
     Pd1d2 = 2. * (17. / 21 * mat[0, :] + mat[4, :] + 4. / 21 * mat[1, :])
     Pd2d2 = 2. * (mat[0, :])
     Pd1s2 = 2. * (8. / 315 * mat[0, :] + 4. / 15 * mat[4, :] + 254. / 441 * mat[1, :] + 2. / 5 * mat[5,:] + 16. / 245 * mat[2,:])
@@ -540,11 +552,11 @@ def _b3nl_core(X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
     Ps2s2 = 2. * (4. / 45 * mat[0, :] + 8. / 63 * mat[1, :] + 8. / 35 * mat[2, :])
     sig4 = jax.scipy.integrate.trapezoid(k_extrap ** 3 * Ps ** 2, x=jnp.log(k_extrap)) / (2. * jnp.pi ** 2)
     sig3nl = Y1_reg_NL(k_extrap, Ps)
-    # return Ps
-    P_1loop, Ps, Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig3nl = _apply_extrapolation(
-        P_1loop, Ps, Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig3nl, EK=static_cfg.EK)
+ 
+    Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig3nl = _apply_extrapolation(
+        Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig3nl, EK=static_cfg.EK)
     
-    return P_1loop, Ps, Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig4, sig3nl
+    return Pd1d2, Pd2d2, Pd1s2, Pd2s2, Ps2s2, sig4, sig3nl
 
 @partial(jit, static_argnames=["static_cfg"])
 def _lpt_NL_core(X_lpt, X_spt, static_cfg, k_extrap, k_final, id_pad, l, m,
@@ -598,14 +610,14 @@ def _IA_mix_core(X_IA_A, X_IA_DEE, X_IA_DBB, static_cfg, k_original, k_extrap, k
     return 2 * P_A, 4 * P_Btype2, 2 * P_DEE, 2 * P_DBB
 
 @partial(jit, static_argnames=["static_cfg"])
-def _IA_ta_core(X_IA_deltaE1, X_IA_0E0E, X_IA0B0B, static_cfg, k_original, k_extrap, k_final, id_pad, l, m,
+def _IA_ta_core(X_IA_deltaE1, X_IA_0E0E, X_IA_0B0B, static_cfg, k_original, k_extrap, k_final, id_pad, l, m,
                 P, P_window=None, C_window=None):
     P_deltaE1, _ = J_k_tensor(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     P_deltaE2 = P_IA_deltaE2(k_original, P)
     P_0E0E, _ = J_k_tensor(P, X_IA_0E0E, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
-    P_0B0B, _ = J_k_tensor(P, X_IA0B0B, static_cfg, k_extrap, k_final, id_pad, l, m,
+    P_0B0B, _ = J_k_tensor(P, X_IA_0B0B, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     P_deltaE1, P_0E0E, P_0B0B = _apply_extrapolation(P_deltaE1, P_0E0E, P_0B0B, EK=static_cfg.EK)
     return 2 * P_deltaE1, 2 * P_deltaE2, P_0E0E, P_0B0B
@@ -897,21 +909,45 @@ def create_jaxpt():
     return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
 
 if __name__ == "__main__":
-    #jpt = create_jaxpt() # << For memory profiler
+    # jpt = create_jaxpt() # << For memory profiler
 
     k = jnp.logspace(-3, 1, 1000)
     jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
-    # vjp_result = jpt.diff(pk_method='discoeb', function='IA_tt', diff_method='vjp')[0]
+
+    def diff_p(param_value):
+        """Differentiation function for testing."""
+        pk_params = {
+            'Omega_c': 0.12,  # Cold dark matter density parameter
+            'Omega_b': 0.022,  # Baryon density parameter
+            'h': 0.69,         # Dimensionless Hubble constant
+            'sigma8': 0.8,    # Amplitude of matter fluctuations
+            'n_s': 0.96,      # Scalar spectral index
+            'Omega_k': 0.0,   # Curvature density parameter
+            'w0': -1.0,       # Dark energy equation of state parameter
+            'wa': 0.0,        # Dark energy equation of state parameter
+        }
+        pk_params['Omega_c'] = param_value
+        return jit_jax_cosmo_pk_generator(param_value, 'Omega_c', pk_params, jpt.k_original)
+    
     pk_params = {
         'Omega_c': 0.12,  # Cold dark matter density parameter
         'Omega_b': 0.022,  # Baryon density parameter
         'h': 0.69,         # Dimensionless Hubble constant
         'sigma8': 0.8,    # Amplitude of matter fluctuations
+        'n_s': 0.96,      # Scalar spectral index
+        'Omega_k': 0.0,   # Curvature density parameter
+        'w0': -1.0,       # Dark energy equation of state parameter
+        'wa': 0.0,        # Dark energy equation of state parameter
     }
     t0 = time()
-    jvp_result = jpt.diff(pk_params=pk_params, function='IA_tt', diff_method='jvp')
+    tangent = jnp.ones_like(0.012, dtype=jnp.float64)
+    primal_out, jvp_result = jvp(diff_p, (0.012,), (tangent,))
     t1 = time()
-    print(f"JVP computation time: {t1 - t0:.4f} seconds")
-    # jacfwd_result = jpt.diff(function='IA_tt', diff_method='jacfwd')
-    # P = jpt._jax_cosmo_pk_generator(param_value=0.12, diff_param='Omega_c', P_params={})
-    # result = jpt.IA_tt(P)
+    print(f"Pk differentiation time: {t1 - t0:.4f} seconds")
+
+
+    t0 = time()
+    jvp_result = jpt.diff(pk_method='jax-cosmo', pk_params=pk_params, pk_diff_param='Omega_c', function='IA_tt', diff_method='jvp')
+    t1 = time()
+    print(f"JVP total computation time: {t1 - t0:.4f} seconds")
+

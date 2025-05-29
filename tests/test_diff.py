@@ -24,6 +24,7 @@ PK_PARAMS_JAX_COSMO = {'Omega_c': 0.25, 'Omega_b': 0.05, 'h': 0.7, 'n_s': 0.96, 
 # Define JAXPT methods that have a standard signature for differentiation
 # (take P, P_window, C_window)
 JAXPT_METHODS_STD_SIGNATURE = [
+    'one_loop_dd',
     'one_loop_dd_bias_b3nl',
     'one_loop_dd_bias_lpt_NL',
     'IA_tt',
@@ -39,6 +40,7 @@ JAXPT_METHODS_STD_SIGNATURE = [
 
 # Expected number of output arrays (or 1 if single array) for each JAXPT method
 JAXPT_METHOD_OUTPUT_COUNTS = {
+    'one_loop_dd': 2,
     'one_loop_dd_bias_b3nl': 9,
     'one_loop_dd_bias_lpt_NL': 7,
     'IA_tt': 2,
@@ -75,10 +77,10 @@ def test_diff_default_vjp(jpt):
     
     expected_outputs = JAXPT_METHOD_OUTPUT_COUNTS['one_loop_dd_bias_b3nl']
     assert isinstance(primals_out, tuple)
-    assert len(primals_out) == expected_outputs
+    assert len(primals_out) == expected_outputs -2 #Accounts for the removed first two elements
     for i, arr in enumerate(primals_out): # Added enumerate
         assert isinstance(arr, jnp.ndarray)
-        if i == 7: # sig4 is the 8th element (index 7) and is scalar for one_loop_dd_bias_b3nl
+        if i == 5: # sig4 is the 8th element (index 7) and is scalar for one_loop_dd_bias_b3nl
             assert arr.shape == ()
         else:
             assert arr.shape == (len(k),)
@@ -155,7 +157,8 @@ def test_diff_vjp_all_std_methods(jpt, method_name):
     )
 
     expected_outputs = JAXPT_METHOD_OUTPUT_COUNTS[method_name]
-    
+    if method_name == 'one_loop_dd_bias_b3nl': expected_outputs -= 2 # Adjust for the removed first two elements
+
     if expected_outputs == 1: 
         assert isinstance(primals_out, jnp.ndarray)
         assert primals_out.shape == (len(jpt.k_original),)
@@ -167,7 +170,7 @@ def test_diff_vjp_all_std_methods(jpt, method_name):
             assert isinstance(primals_out[i], jnp.ndarray)
             
             is_scalar_component = False
-            if method_name == 'one_loop_dd_bias_b3nl' and i == 7: 
+            if method_name == 'one_loop_dd_bias_b3nl' and i == 5: 
                 is_scalar_component = True
             elif method_name == 'one_loop_dd_bias_lpt_NL' and i == 6: 
                 is_scalar_component = True
@@ -201,6 +204,7 @@ def test_diff_jvp_all_std_methods(jpt, method_name):
     )
 
     expected_outputs = JAXPT_METHOD_OUTPUT_COUNTS[method_name]
+    if method_name == 'one_loop_dd_bias_b3nl': expected_outputs -= 2 # Adjust for the removed first two elements
 
     if expected_outputs == 1:
         assert isinstance(primals_out, jnp.ndarray)
@@ -219,7 +223,7 @@ def test_diff_jvp_all_std_methods(jpt, method_name):
             assert isinstance(tangents_out[i], jnp.ndarray)
             
             is_scalar_component = False
-            if method_name == 'one_loop_dd_bias_b3nl' and i == 7: 
+            if method_name == 'one_loop_dd_bias_b3nl' and i == 5: 
                 is_scalar_component = True
             elif method_name == 'one_loop_dd_bias_lpt_NL' and i == 6: 
                 is_scalar_component = True
@@ -249,6 +253,7 @@ def test_diff_jacfwd_all_std_methods(jpt, method_name):
     )
 
     expected_outputs = JAXPT_METHOD_OUTPUT_COUNTS[method_name]
+    if method_name == 'one_loop_dd_bias_b3nl': expected_outputs -= 2 # Adjust for the removed first two elements
 
     if expected_outputs == 1:
         assert isinstance(jacobian_out, jnp.ndarray)
@@ -262,7 +267,7 @@ def test_diff_jacfwd_all_std_methods(jpt, method_name):
             assert isinstance(arr, jnp.ndarray)
             
             is_scalar_component = False
-            if method_name == 'one_loop_dd_bias_b3nl' and i == 7:
+            if method_name == 'one_loop_dd_bias_b3nl' and i == 5:
                 is_scalar_component = True
             elif method_name == 'one_loop_dd_bias_lpt_NL' and i == 6:
                 is_scalar_component = True
