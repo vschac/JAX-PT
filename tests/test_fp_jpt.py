@@ -19,6 +19,25 @@ C_window = 0.75
 
 if __name__ == "__main__":
     from time import time
+    jaxx = JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=int(0.5 * len(k)))
+    P_window = jnp.array([0.2, 0.2])
+    C_window = 0.75
+    pk_params = {'Omega_c': 0.25, 'Omega_b': 0.05, 'h': 0.7, 'n_s': 0.96, 'sigma8': 0.8, 'k_pivot': 0.05}
+    
+    t2 = time()
+    res4 = jaxx.multi_param_diff("jax-cosmo", pk_params, ["Omega_c", "Omega_b", "h"], "OV", P_window=P_window, C_window=C_window)
+    t3 = time()
+    print(f"Time taken for JAXPT multi_param_diff: {t3 - t2:.4f} seconds")
+    
+    # t0 = time()
+    # res1 = jaxx.diff("jax-cosmo", pk_params, "Omega_c", "IA_tt", P_window=P_window, C_window=C_window)
+    # res2 = jaxx.diff("jax-cosmo", pk_params, "Omega_b", "IA_tt", P_window=P_window, C_window=C_window)
+    # res3 = jaxx.diff("jax-cosmo", pk_params, "h", "IA_tt", P_window=P_window, C_window=C_window)
+    # t1 = time()
+    # print(f"Time taken for JAXPT diff: {t1 - t0:.4f} seconds")
+    print(len(res4["h"]))
+    print(res4["h"].shape)
+
 
 
 @pytest.fixture

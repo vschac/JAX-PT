@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jit, vjp, jvp, jacfwd, grad
+from jax import jit, vjp, jvp, jacfwd, jacrev
 import numpy as np
 from jax import config
 import jax
@@ -384,24 +384,23 @@ class JAXPT:
     
     
 
-    def diff(self, pk_method='jax-cosmo', pk_params={}, pk_diff_param='Omega_c', 
-         function=None, P_window=None, C_window=None, diff_method=None, tangent=None):    
+    def diff(self, pk_method, pk_params, pk_diff_param, function=None, P_window=None, C_window=None,
+              diff_method='jacfwd', tangent=None):    
         
         if function is None:
             raise ValueError("No function provided for differentiation. Please specify a function name.")
+        if not isinstance(pk_params, dict):
+            raise ValueError("pk_params must be a dictionary of cosmological parameters.")
+        
         func = getattr(self, function)
         def diff_func(param_value):
             P = self._pk_generator(pk_method, param_value, pk_diff_param, pk_params)
             P_new = func(P, P_window=P_window, C_window=C_window)
             return P_new
-        
-        if pk_method == 'jax-cosmo':
-            param_value = pk_params.get(pk_diff_param, 0.12)  # Default value for Omega_c if not provided
-        elif pk_method == 'discoeb':
-            if pk_diff_param == 'Omega_c': # Default wasn't changed by user
-                pk_diff_param = 'Omegam'  # discoeb uses Omegam instead of Omega_c
-            param_value = pk_params.get(pk_diff_param, 0.3099)  
+
+        param_value = pk_params.get(pk_diff_param)
         param_value = jnp.array(param_value, dtype=jnp.float64)
+
         if diff_method == 'jacfwd':
             result = jacfwd(diff_func)(param_value)
             return result
@@ -421,6 +420,114 @@ class JAXPT:
             return vjp_result, primal_out
         else:
             raise ValueError(f"Unsupported differentiation method: {diff_method}. Use 'jacfwd', 'jvp', or 'vjp'.")
+        
+    def multi_param_diff(self, pk_method, pk_params, pk_diff_params,
+                    function=None, P_window=None, C_window=None, 
+                    diff_method='jacfwd', output_indices=None):
+        if function is None:
+            raise ValueError("No function provided for differentiation. Please specify a function name.")
+        if not isinstance(pk_diff_params, list):
+            raise ValueError("pk_diff_params must be a list of parameter names.")
+        if not isinstance(pk_params, dict):
+            raise ValueError("pk_params must be a dictionary of cosmological parameters.")
+        
+        func = getattr(self, function)
+        param_values = jnp.array([pk_params.get(param) for param in pk_diff_params])
+
+        if any(value is None for value in param_values):
+            raise ValueError(f"Missing parameter values for: {', '.join([param for param, value in zip(pk_diff_params, param_values) if value is None])}. "
+                             "Please provide all required parameters in pk_params.")
+        
+        def vector_diff_func(param_vector):
+            updated_params = pk_params.copy()
+            for i, name in enumerate(pk_diff_params):
+                updated_params[name] = param_vector[i]
+            
+            # [0] is used to preserve the pk_generator signature, it is not actually needed in this case as the params are set explicitly above
+            P = self._pk_generator(pk_method, param_vector[0], pk_diff_params[0], updated_params)
+            
+            P_new = func(P, P_window=P_window, C_window=C_window)
+        
+            # Handle output selection
+            if output_indices is not None:
+                if isinstance(P_new, tuple):
+                    if isinstance(output_indices, int):
+                        return P_new[output_indices]
+                    else:
+                        return tuple(P_new[i] for i in output_indices)
+                else:
+                    # Single output, ignore output_indices
+                    return P_new
+            
+            return P_new
+        
+        if diff_method == 'jacfwd':
+            jacobian = jacfwd(vector_diff_func)(param_values)
+        elif diff_method == 'jacrev':
+            jacobian = jacrev(vector_diff_func)(param_values)
+        else:
+            raise ValueError(f"Unsupported differentiation method: {diff_method}. Use 'jacfwd' or 'jacrev'.")
+        
+        if isinstance(jacobian, (list, tuple)):
+            # Multiple outputs - return nested dictionary
+            result = {}
+            output_names = self._get_output_names(function)
+            
+            for i, jac in enumerate(jacobian):
+                if i < len(output_names):
+                    name = output_names[i]
+                else:
+                    name = f'output_{i}'
+                
+                jac = jnp.asarray(jac)
+                
+                if jac.ndim == 1:
+                    # Scalar output - jacobian is 1D array of derivatives
+                    result[name] = {
+                        param: jac[j]
+                        for j, param in enumerate(pk_diff_params)
+                    }
+                else:
+                    # Vector output - jacobian is 2D array
+                    result[name] = {
+                        param: jac[:, j]
+                        for j, param in enumerate(pk_diff_params)
+                    }
+            return result
+        else:
+            # Single output - ensure it's an array
+            jacobian = jnp.asarray(jacobian)
+            
+            if jacobian.ndim == 1:
+                # Single scalar output
+                return {
+                    param: jacobian[i]
+                    for i, param in enumerate(pk_diff_params)
+                }
+            else:
+                # Single vector output
+                return {
+                    param: jacobian[:, i]
+                    for i, param in enumerate(pk_diff_params)
+                }
+
+    def _get_output_names(self, function_name):
+        output_map = {
+            'one_loop_dd': ['P_1loop', 'Ps'],
+            'one_loop_dd_bias_b3nl': ["Pd1d2", "Pd2d2", "Pd1s2", "Pd2s2", "Ps2s2", "sig4", "sig3nl"],
+            'one_loop_dd_bias_lpt_NL': ["Ps", "Pb1L", "Pb1L_2", "Pb1L_b2L", "Pb2L", "Pb2L_2", "sig4"],
+            'IA_ct': ["P_0tE", "P_0EtE", "P_E2tE", "P_tEtE"],
+            'IA_mix': ['P_A', 'P_Btype2', 'P_DEE', 'P_DBB'],
+            'IA_ta': ['P_deltaE1', 'P_deltaE2', 'P_0E0E', 'P_0B0B'],
+            'IA_tt': ['P_E', 'P_B'],
+            'gI_ct': ["P_d2tE", "P_s2tE"],
+            'gI_ta': ["P_d2E", "P_d20E", "P_s2E", "P_s20E"],
+            'gI_tt': ["P_s2E2", "P_d2E2"],
+            'OV': ['P_OV'],
+            'kPol': ['P_kP1', 'P_kP2', 'P_kP3'],
+        }
+        return output_map.get(function_name, 
+                            [f'output_{i}' for i in range(10)])  # fallback
 
     def _pk_generator(self, pk_method, param_value, diff_param, P_params):
         if pk_method == 'jax-cosmo':
@@ -501,10 +608,7 @@ def jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, k_original):
         'wa': P_params.get('wa', 0.0),
     }
 
-    if diff_param not in cosmo_dict:
-        raise ValueError(f"Parameter '{diff_param}' not found in cosmology parameters.")
-    
-    # Explicitly use the differentiation parameter
+    # Explicitly use the differentiation parameter, done before this method on multi param diff
     cosmo_dict[diff_param] = param_value
     new_cosmo = Cosmology(**cosmo_dict)
     return power.linear_matter_power(new_cosmo, k_original)
@@ -940,14 +1044,14 @@ if __name__ == "__main__":
         'wa': 0.0,        # Dark energy equation of state parameter
     }
     t0 = time()
-    tangent = jnp.ones_like(0.012, dtype=jnp.float64)
-    primal_out, jvp_result = jvp(diff_p, (0.012,), (tangent,))
+    # tangent = jnp.ones_like(0.012, dtype=jnp.float64)
+    # primal_out, jvp_result = jvp(diff_p, (0.012,), (tangent,))
+    jit_jax_cosmo_pk_generator(0.12, 'Omega_c', pk_params, jpt.k_original)
     t1 = time()
-    print(f"Pk differentiation time: {t1 - t0:.4f} seconds")
+    print(f"Pk differentiation time: {t1 - t0:.8f} seconds")
 
 
     t0 = time()
     jvp_result = jpt.diff(pk_method='jax-cosmo', pk_params=pk_params, pk_diff_param='Omega_c', function='IA_tt', diff_method='jvp')
     t1 = time()
     print(f"JVP total computation time: {t1 - t0:.4f} seconds")
-

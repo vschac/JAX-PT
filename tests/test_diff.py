@@ -67,7 +67,9 @@ def test_diff_default_vjp(jpt):
     # Assuming 'vjp' is the intended default to test here.
     # Function must be specified by name.
     grad_pk_param, primals_out = jpt.diff(
+        pk_method='jax-cosmo', 
         pk_params=PK_PARAMS_JAX_COSMO.copy(),
+        pk_diff_param='Omega_c',
         function='one_loop_dd_bias_b3nl', # Specify function by name
         diff_method='vjp' # Specify diff_method
     )
@@ -97,6 +99,7 @@ def test_diff_jvp(jpt):
     
     # Using IA_tt as the function to differentiate
     primals_out, tangents_out = jpt.diff(
+        pk_method='jax-cosmo', 
         pk_params=PK_PARAMS_JAX_COSMO.copy(),
         pk_diff_param='h',
         function="IA_tt",
@@ -125,6 +128,7 @@ def test_diff_jacfwd(jpt):
     """Test diff with jacfwd method."""
     # Using kPol as the function to differentiate
     jacobian_out = jpt.diff(
+        pk_method='jax-cosmo', 
         pk_params=PK_PARAMS_JAX_COSMO.copy(),
         pk_diff_param='n_s',
         function='kPol',
@@ -148,6 +152,7 @@ def test_diff_vjp_all_std_methods(jpt, method_name):
     pk_params = PK_PARAMS_JAX_COSMO.copy()
     
     grad_pk_param, primals_out = jpt.diff(
+        pk_method='jax-cosmo', 
         pk_params=pk_params,
         pk_diff_param='Omega_c',
         function=method_name,
@@ -194,6 +199,7 @@ def test_diff_jvp_all_std_methods(jpt, method_name):
     # JAXPT.diff for jvp returns: tangents_out, primals_out (as per your diff method's current return)
     # If your diff method returns primal_out, jvp_result, then swap the unpacking
     tangents_out, primals_out = jpt.diff(
+        pk_method='jax-cosmo', 
         pk_params=pk_params,
         pk_diff_param='h',
         function=method_name,
@@ -244,6 +250,7 @@ def test_diff_jacfwd_all_std_methods(jpt, method_name):
     pk_params = PK_PARAMS_JAX_COSMO.copy()
     
     jacobian_out = jpt.diff(
+        pk_method='jax-cosmo', 
         pk_params=pk_params,
         pk_diff_param='n_s',
         function=method_name,
@@ -280,20 +287,343 @@ def test_diff_jacfwd_all_std_methods(jpt, method_name):
                 assert arr.shape == (len(jpt.k_original),)
             assert not jnp.any(jnp.isnan(arr))
 
-# Tests for custom Pk generator
 
-def test_diff_no_pk_params_uses_defaults_jax_cosmo(jpt):
-    """Test that jax-cosmo uses default Pk params if none are provided."""
-    # This test implicitly checks that no error occurs and output is valid
-    # when pk_params is empty for jax-cosmo (should use internal defaults).
-    primals_out, _ = jpt.diff(
-        pk_method='jax-cosmo', # explicit for clarity
-        pk_params={}, # Empty params
-        pk_diff_param='Omega_c', # Omega_c has a default in jax-cosmo
-        function='OV', # OV returns a single array
-        diff_method='jvp'
+##### Tests for multi param diff #####
+def test_multi_param_diff_basic_jacfwd(jpt):
+    """Test multi_param_diff with jacfwd for multiple parameters."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'h', 'n_s']
+    
+    result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=pk_diff_params,
+        function='one_loop_dd',
+        P_window=P_window,
+        C_window=C_window,
+        diff_method='jacfwd'
     )
-    assert isinstance(primals_out, jnp.ndarray)
-    assert primals_out.shape == (len(jpt.k_original),)
-    assert not jnp.any(jnp.isnan(primals_out))
+    
+    # Should return nested dict for tuple outputs
+    assert isinstance(result, dict)
+    assert len(result) == 2  # one_loop_dd returns (P_1loop, Ps)
+    
+    # Check structure
+    assert 'P_1loop' in result
+    assert 'Ps' in result
+    
+    for output_name in ['P_1loop', 'Ps']:
+        assert isinstance(result[output_name], dict)
+        assert set(result[output_name].keys()) == set(pk_diff_params)
+        
+        for param in pk_diff_params:
+            deriv = result[output_name][param]
+            assert isinstance(deriv, jnp.ndarray)
+            assert deriv.shape == (len(jpt.k_original),)
+            assert not jnp.any(jnp.isnan(deriv))
 
+
+def test_multi_param_diff_basic_jacrev(jpt):
+    """Test multi_param_diff with jacrev for multiple parameters."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'sigma8']
+    
+    result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=pk_diff_params,
+        function='OV',  # Single output function
+        diff_method='jacrev'
+    )
+    
+    # Should return simple dict for single output
+    assert isinstance(result, dict)
+    assert set(result.keys()) == set(pk_diff_params)
+    
+    for param in pk_diff_params:
+        deriv = result[param]
+        assert isinstance(deriv, jnp.ndarray)
+        assert deriv.shape == (len(jpt.k_original),)
+        assert not jnp.any(jnp.isnan(deriv))
+
+
+def test_multi_param_diff_output_indices_int(jpt):
+    """Test multi_param_diff with output_indices as integer."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'h', 'n_s']
+    
+    # Get only first output
+    result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=pk_diff_params,
+        function='IA_mix',  # Returns 4 outputs
+        output_indices=0,
+        diff_method='jacfwd'
+    )
+    
+    # Should return simple dict when selecting single output
+    assert isinstance(result, dict)
+    assert set(result.keys()) == set(pk_diff_params)
+    
+    for param in pk_diff_params:
+        deriv = result[param]
+        assert isinstance(deriv, jnp.ndarray)
+        assert deriv.shape == (len(jpt.k_original),)
+        assert not jnp.any(jnp.isnan(deriv))
+
+
+def test_multi_param_diff_output_indices_list(jpt):
+    """Test multi_param_diff with output_indices as list."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'h']
+    
+    # Get outputs 0 and 2
+    result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=pk_diff_params,
+        function='IA_mix',  # Returns 4 outputs
+        output_indices=[0, 2],
+        diff_method='jacfwd'
+    )
+    
+    # Should return nested dict with only selected outputs
+    assert isinstance(result, dict)
+    assert len(result) == 2  # Only 2 outputs selected
+    
+    output_names = jpt._get_output_names('IA_mix')
+    assert output_names[0] in result
+    assert output_names[2] in result
+    assert output_names[1] not in result  # Not selected
+    assert output_names[3] not in result  # Not selected
+
+
+def test_multi_param_diff_single_param(jpt):
+    """Test multi_param_diff with single parameter (edge case)."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    
+    result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=['Omega_c'],  # Single parameter
+        function='one_loop_dd',
+        diff_method='jacfwd'
+    )
+    
+    assert isinstance(result, dict)
+    assert len(result) == 2  # one_loop_dd returns 2 outputs
+    
+    for output_name in ['P_1loop', 'Ps']:
+        assert 'Omega_c' in result[output_name]
+        assert result[output_name]['Omega_c'].shape == (len(jpt.k_original),)
+
+
+# Error handling tests
+
+def test_multi_param_diff_missing_function(jpt):
+    """Test multi_param_diff raises error when function is not specified."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    
+    with pytest.raises(ValueError, match="No function provided"):
+        jpt.multi_param_diff(
+            pk_method='jax-cosmo',
+            pk_params=pk_params,
+            pk_diff_params=['Omega_c'],
+            function=None
+        )
+
+
+def test_multi_param_diff_invalid_pk_diff_params(jpt):
+    """Test multi_param_diff raises error for invalid pk_diff_params."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    
+    # Not a list
+    with pytest.raises(ValueError, match="pk_diff_params must be a list"):
+        jpt.multi_param_diff(
+            pk_method='jax-cosmo',
+            pk_params=pk_params,
+            pk_diff_params='Omega_c',  # String instead of list
+            function='one_loop_dd'
+        )
+
+
+def test_multi_param_diff_invalid_pk_params(jpt):
+    """Test multi_param_diff raises error for invalid pk_params."""
+    # Not a dict
+    with pytest.raises(ValueError, match="pk_params must be a dictionary"):
+        jpt.multi_param_diff(
+            pk_method='jax-cosmo',
+            pk_params=['invalid'],  # List instead of dict
+            pk_diff_params=['Omega_c'],
+            function='one_loop_dd'
+        )
+
+
+def test_multi_param_diff_missing_param_values(jpt):
+    """Test multi_param_diff raises error when parameter values are missing."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    del pk_params['h']  # Remove required parameter
+    
+    with pytest.raises(ValueError, match="Missing parameter values for: h"):
+        jpt.multi_param_diff(
+            pk_method='jax-cosmo',
+            pk_params=pk_params,
+            pk_diff_params=['Omega_c', 'h'],  # h is missing
+            function='one_loop_dd'
+        )
+
+
+def test_multi_param_diff_invalid_diff_method(jpt):
+    """Test multi_param_diff raises error for invalid diff_method."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    
+    with pytest.raises(ValueError, match="Unsupported differentiation method"):
+        jpt.multi_param_diff(
+            pk_method='jax-cosmo',
+            pk_params=pk_params,
+            pk_diff_params=['Omega_c'],
+            function='one_loop_dd',
+            diff_method='vjp'  # Not supported for multi_param_diff
+        )
+
+
+# Parameterized tests for all standard JAXPT methods
+
+@pytest.mark.parametrize("method_name", JAXPT_METHODS_STD_SIGNATURE)
+@pytest.mark.parametrize("diff_method", ['jacfwd', 'jacrev'])
+def test_multi_param_diff_all_methods(jpt, method_name, diff_method):
+    """Parameterized test for multi_param_diff across all standard JAXPT methods."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'h', 'n_s']
+    
+    result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=pk_diff_params,
+        function=method_name,
+        P_window=P_window,
+        C_window=C_window,
+        diff_method=diff_method
+    )
+    
+    expected_outputs = JAXPT_METHOD_OUTPUT_COUNTS[method_name]
+    if method_name == 'one_loop_dd_bias_b3nl':
+        expected_outputs -= 2  # Adjust for removed first two elements
+    
+    if expected_outputs == 1:
+        # Single output - simple dict
+        assert isinstance(result, dict)
+        assert set(result.keys()) == set(pk_diff_params)
+        
+        for param in pk_diff_params:
+            deriv = result[param]
+            assert isinstance(deriv, jnp.ndarray)
+            assert deriv.shape == (len(jpt.k_original),)
+            assert not jnp.any(jnp.isnan(deriv))
+    else:
+        # Multiple outputs - nested dict
+        assert isinstance(result, dict)
+        output_names = jpt._get_output_names(method_name)
+        assert len(result) == expected_outputs
+        
+        for i, output_name in enumerate(output_names[:expected_outputs]):
+            assert output_name in result
+            assert isinstance(result[output_name], dict)
+            assert set(result[output_name].keys()) == set(pk_diff_params)
+            
+            for param in pk_diff_params:
+                deriv = result[output_name][param]
+                assert isinstance(deriv, jnp.ndarray)
+                
+                # Check for scalar outputs
+                is_scalar_component = False
+                if method_name == 'one_loop_dd_bias_b3nl' and i == 5:
+                    is_scalar_component = True
+                elif method_name == 'one_loop_dd_bias_lpt_NL' and i == 6:
+                    is_scalar_component = True
+                
+                if is_scalar_component:
+                    assert deriv.shape == ()
+                else:
+                    assert deriv.shape == (len(jpt.k_original),)
+                
+                assert not jnp.any(jnp.isnan(deriv))
+
+
+@pytest.mark.parametrize("method_name", JAXPT_METHODS_STD_SIGNATURE)
+def test_multi_param_diff_output_indices_all_methods(jpt, method_name):
+    """Test output_indices functionality across all methods."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'h']
+    
+    expected_outputs = JAXPT_METHOD_OUTPUT_COUNTS[method_name]
+    if method_name == 'one_loop_dd_bias_b3nl':
+        expected_outputs -= 2
+    
+    if expected_outputs > 1:
+        # Test selecting first output only
+        result = jpt.multi_param_diff(
+            pk_method='jax-cosmo',
+            pk_params=pk_params,
+            pk_diff_params=pk_diff_params,
+            function=method_name,
+            output_indices=0,
+            diff_method='jacfwd'
+        )
+        
+        # Should return simple dict
+        assert isinstance(result, dict)
+        assert set(result.keys()) == set(pk_diff_params)
+        
+        # Test selecting multiple outputs
+        if expected_outputs > 2:
+            result = jpt.multi_param_diff(
+                pk_method='jax-cosmo',
+                pk_params=pk_params,
+                pk_diff_params=pk_diff_params,
+                function=method_name,
+                output_indices=[0, expected_outputs-1],  # First and last
+                diff_method='jacfwd'
+            )
+            
+            assert isinstance(result, dict)
+            assert len(result) == 2  # Only 2 outputs selected
+
+
+def test_multi_param_diff_comparison_with_single_diff(jpt):
+    """Test that multi_param_diff gives same results as multiple single diff calls."""
+    pk_params = PK_PARAMS_JAX_COSMO.copy()
+    pk_diff_params = ['Omega_c', 'h']
+    function = 'one_loop_dd'
+    
+    # Get results using multi_param_diff
+    multi_result = jpt.multi_param_diff(
+        pk_method='jax-cosmo',
+        pk_params=pk_params,
+        pk_diff_params=pk_diff_params,
+        function=function,
+        diff_method='jacfwd',
+        output_indices=0  # Only first output for comparison
+    )
+    
+    # Get results using single diff calls
+    single_results = {}
+    for param in pk_diff_params:
+        single_result = jpt.diff(
+            pk_method='jax-cosmo',
+            pk_params=pk_params,
+            pk_diff_param=param,
+            function=function,
+            diff_method='jacfwd'
+        )
+        # Extract first output if tuple
+        if isinstance(single_result, tuple):
+            single_results[param] = single_result[0]
+        else:
+            single_results[param] = single_result
+    
+    # Compare results
+    for param in pk_diff_params:
+        assert jnp.allclose(multi_result[param], single_results[param], 
+                           rtol=1e-10, atol=1e-12)
