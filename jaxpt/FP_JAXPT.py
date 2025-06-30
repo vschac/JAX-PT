@@ -391,6 +391,8 @@ class JAXPT:
             raise ValueError("No function provided for differentiation. Please specify a function name.")
         if not isinstance(pk_params, dict):
             raise ValueError("pk_params must be a dictionary of cosmological parameters.")
+        if pk_diff_param not in pk_params:
+            raise ValueError(f"{pk_diff_param} not found in pk_params")
         
         func = getattr(self, function)
         def diff_func(param_value):
@@ -430,6 +432,9 @@ class JAXPT:
             raise ValueError("pk_diff_params must be a list of parameter names.")
         if not isinstance(pk_params, dict):
             raise ValueError("pk_params must be a dictionary of cosmological parameters.")
+        for param in pk_diff_params:
+            if param not in pk_params:
+                raise ValueError(f"{param} not found in pk_params")
         
         func = getattr(self, function)
         param_values = jnp.array([pk_params.get(param) for param in pk_diff_params])
@@ -472,6 +477,7 @@ class JAXPT:
             # Multiple outputs - return nested dictionary
             result = {}
             output_names = self._get_output_names(function)
+            if output_indices is not None: output_names = [output_names[i] for i in output_indices]
             
             for i, jac in enumerate(jacobian):
                 if i < len(output_names):
@@ -526,8 +532,7 @@ class JAXPT:
             'OV': ['P_OV'],
             'kPol': ['P_kP1', 'P_kP2', 'P_kP3'],
         }
-        return output_map.get(function_name, 
-                            [f'output_{i}' for i in range(10)])  # fallback
+        return output_map[function_name]
 
     def _pk_generator(self, pk_method, param_value, diff_param, P_params):
         if pk_method == 'jax-cosmo':

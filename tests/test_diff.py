@@ -322,7 +322,7 @@ def test_multi_param_diff_basic_jacfwd(jpt):
             assert deriv.shape == (len(jpt.k_original),)
             assert not jnp.any(jnp.isnan(deriv))
 
-
+@pytest.mark.timeout(15)
 def test_multi_param_diff_basic_jacrev(jpt):
     """Test multi_param_diff with jacrev for multiple parameters."""
     pk_params = PK_PARAMS_JAX_COSMO.copy()
@@ -465,7 +465,7 @@ def test_multi_param_diff_missing_param_values(jpt):
     pk_params = PK_PARAMS_JAX_COSMO.copy()
     del pk_params['h']  # Remove required parameter
     
-    with pytest.raises(ValueError, match="Missing parameter values for: h"):
+    with pytest.raises(ValueError, match="h not found in pk_params"):
         jpt.multi_param_diff(
             pk_method='jax-cosmo',
             pk_params=pk_params,
@@ -491,7 +491,7 @@ def test_multi_param_diff_invalid_diff_method(jpt):
 # Parameterized tests for all standard JAXPT methods
 
 @pytest.mark.parametrize("method_name", JAXPT_METHODS_STD_SIGNATURE)
-@pytest.mark.parametrize("diff_method", ['jacfwd', 'jacrev'])
+@pytest.mark.parametrize("diff_method", ['jacfwd'])#, 'jacrev']) << Removed jacrev due to memory consumption issues
 def test_multi_param_diff_all_methods(jpt, method_name, diff_method):
     """Parameterized test for multi_param_diff across all standard JAXPT methods."""
     pk_params = PK_PARAMS_JAX_COSMO.copy()
@@ -617,13 +617,15 @@ def test_multi_param_diff_comparison_with_single_diff(jpt):
             function=function,
             diff_method='jacfwd'
         )
-        # Extract first output if tuple
-        if isinstance(single_result, tuple):
-            single_results[param] = single_result[0]
-        else:
-            single_results[param] = single_result
+
+        single_results[param] = single_result[0]
     
     # Compare results
     for param in pk_diff_params:
+        if not jnp.allclose(multi_result[param], single_results[param], 
+                           rtol=1e-10, atol=1e-12):
+            print(f"{param} failed")
+            print(f"Max diff: {jnp.max(jnp.abs(multi_result[param] - single_results[param]))}")
+            print(f"Rel diff: {jnp.max(jnp.abs(multi_result[param] - single_results[param]) / multi_result[param])}")
         assert jnp.allclose(multi_result[param], single_results[param], 
                            rtol=1e-10, atol=1e-12)
