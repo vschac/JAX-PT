@@ -187,6 +187,7 @@ class JAXPT:
 
     def _minimal_warmup(self):
         # Warms up k grid quantities
+        # 100-200MB memory usage, ~1 seconds uncached warmup time (on 2024 MacBook Pro M4)
         print("Starting minimal JIT warm-up...")
         t0 = time()
         self.X_spt
@@ -224,6 +225,7 @@ class JAXPT:
 
     def _moderate_warmup(self):
         # Warms up k grid quantities, power spectrum generation, and some common functions (with window parameters)
+        # 300-400MB memory usage, ~2-3 seconds uncached warmup time (on 2024 MacBook Pro M4)
         print("Starting moderate JIT warm-up...")
         t0 = time()
         self.X_spt
@@ -295,6 +297,7 @@ class JAXPT:
 
     def _full_warmup(self):
         # Warms up all k grid quantities, all functions, all window parameter combinations, and power spectrum generation
+        # 500-600MB memory usage, ~8-10 seconds uncached warmup time (on 2024 MacBook Pro M4)
         print("Starting full JIT warm-up...")
         t0 = time()
         # Prepare test inputs
@@ -1079,12 +1082,39 @@ def convolution(c1, c2, g_m, g_n, h_l, two_part_l=None):
 
     return C_l
 
+
+
 from memory_profiler import profile
+import gc
+import shutil
+import os
+def clear_jax_cache():
+    """Clear all JAX caches and force garbage collection"""
+    # Clear JAX compilation cache
+    jax.clear_caches()
+    
+    # Clear persistent cache directory if it exists
+    cache_dir = "/tmp/jax_cache"
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
+        os.makedirs(cache_dir, exist_ok=True)
+    
+    # Force garbage collection
+    gc.collect()
+    
+    print("JAX caches cleared")
+
 
 @profile
 def create_jaxpt():
     k = jnp.logspace(-3, 1, 1000)
-    return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)), warmup="minimal")
+    return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)), warmup="full")
 
 if __name__ == "__main__":
-    create_jaxpt()
+    clear_jax_cache()
+    # create_jaxpt()
+    k = jnp.logspace(-3, 1, 1000)
+    t0 = time()
+    JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)), warmup="minimal")
+    t1 = time()
+    print(f"Time taken to create JAXPT: {t1 - t0:.2f} seconds")
