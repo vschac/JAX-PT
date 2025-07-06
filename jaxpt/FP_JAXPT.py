@@ -542,67 +542,12 @@ class JAXPT:
         return output_map[function_name]
 
     def _pk_generator(self, pk_method, param_value, diff_param, P_params):
+        """Generate power spectrum based on the specified method."""
+        # This method exists to allow for new differential power spectra generators to be added in the future.
         if pk_method == 'jax-cosmo':
             return jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, self.k_original)
-        elif pk_method == 'discoeb':
-            return self._discoeb_pk_generator(param_value, diff_param, P_params)
         else:
             raise ValueError(f"Unsupported power spectrum generation method: {pk_method}")
-    
-    def get_filter_jit():
-        """Lazily import equinox.filter_jit only when needed."""
-        import equinox
-        return equinox.filter_jit
-
-    @get_filter_jit()
-    def _discoeb_pk_generator(self, param_value, diff_param, P_params):
-        from discoeb.background import evolve_background
-        from discoeb.perturbations import evolve_perturbations, get_power
-        
-        cosmo_dict = {
-            'Omegam'  : P_params.get('Omegam', 0.3099),            # Total matter density parameter
-            'Omegab'  : P_params.get('Omegab', 0.0488911),         # Baryon density parameter
-            'w_DE_0'  : P_params.get('w_DE_0', -0.99),             # Dark energy equation of state parameter today
-            'w_DE_a'  : P_params.get('w_DE_a', 0.0),              # Dark energy equation of state parameter time derivative
-            'cs2_DE'  : P_params.get('cs2_DE', 1.0),               # Dark energy sound speed squared
-            'Omegak'  : P_params.get('Omegak', 0.0),             # Curvature density parameter
-            'A_s'     : P_params.get('A_s', 2.1e-9),        # Scalar amplitude of the primordial power spectrum
-            'n_s'     : P_params.get('n_s', 0.96822),           # Scalar spectral index
-            'H0'      : P_params.get('H0', 67.742),            # Hubble constant today in units of 100 km/s/Mpc
-            'Tcmb'    : P_params.get('Tcmb', 2.7255),            # CMB temperature today in K
-            'YHe'     : P_params.get('YHe', 0.248),             # Helium mass fraction
-            'Neff'    : P_params.get('Neff', 2.046),             # Effective number of ultrarelativistic neutrinos
-                                                        # -1 if massive neutrino present
-            'Nmnu'    : P_params.get('Nmnu', 1),                # Number of massive neutrinos (must be 1 currently)
-            'mnu'     : P_params.get('mnu', 0.06),              # Sum of neutrino masses in eV 
-            'k_p'     : P_params.get('k_p', 0.05),              # Pivot scale in 1/Mpc
-            }
-        
-        if diff_param not in cosmo_dict:
-            raise ValueError(f"Parameter '{diff_param}' not found in cosmology parameters.")
-        cosmo_dict[diff_param] = param_value
-        #### This code comes directly from the discoeb example notebook ####
-
-        # modes to sample
-        nmodes = 512                         # number of modes to sample
-        kmin   = jnp.min(self.k_original)                        # minimum k in 1/Mpc
-        kmax   = jnp.max(self.k_original)                          # maximum k in 1/Mpc
-        aexp   = 1.0                         # scale factor at which to evaluate the power spectrum
-        
-        ## Compute Background+thermal evolution
-        param = evolve_background(param=cosmo_dict, thermo_module='RECFAST')
-
-        # compute perturbation evolution
-        aexp_out = jnp.array([aexp])
-        # jax.profiler.start_trace("/tmp/tensorboard")
-        y, kmodes = evolve_perturbations( param=param, kmin=kmin, kmax=kmax, num_k=nmodes, aexp_out=aexp_out, 
-                                            rtol=1e-3, atol=1e-3 , 
-                                        )
-        # jax.profiler.stop_trace()
-        # turn perturbations into power spectra
-        Pkm = get_power( k=kmodes, y=y[:,0,:], idx=4, param=param )
-        Pkm = jnp.interp(self.k_original, kmodes, Pkm)
-        return Pkm
 
 @partial(jit, static_argnames=["diff_param"])
 def jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, k_original):
