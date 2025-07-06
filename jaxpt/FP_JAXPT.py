@@ -92,7 +92,7 @@ def jax_cached_property(method):
     return property(wrapper)
 
 class JAXPT: 
-    def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None, warmup=True):
+    def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None, warmup=None):
         
         if (k is None or len(k) == 0):
             raise ValueError('You must provide an input k array.')        
@@ -174,11 +174,128 @@ class JAXPT:
             EK=self.EK
         )
 
-        if warmup: self._simple_warmup()
+        if warmup is not None: 
+            if warmup == "full":
+                self._full_warmup()
+            elif warmup == "moderate":
+                self._moderate_warmup()
+            elif warmup == "minimal":
+                self._minimal_warmup()
+            else:
+                raise ValueError(f"Unknown warmup strategy: {warmup}")
 
-    def _simple_warmup(self):
-        """Streamlined JIT warm-up focused on top-level API functions and internal computation methods."""
-        print("Starting JIT warm-up...")
+
+    def _minimal_warmup(self):
+        # Warms up k grid quantities
+        print("Starting minimal JIT warm-up...")
+        t0 = time()
+        self.X_spt
+        self.X_lpt
+        self.X_sptG
+        self.X_IA_A
+        self.X_IA_B
+        self.X_IA_E
+        self.X_IA_DEE
+        self.X_IA_DBB
+        self.X_IA_deltaE1
+        self.X_IA_0E0E
+        self.X_IA_0B0B
+        self.X_IA_gb2_fe
+        self.X_IA_gb2_he
+        self.X_IA_tij_feG2
+        self.X_IA_tij_heG2
+        self.X_IA_tij_F2F2
+        self.X_IA_tij_G2G2
+        self.X_IA_tij_F2G2
+        self.X_IA_gb2_F2    
+        self.X_IA_gb2_G2
+        self.X_IA_gb2_S2F2
+        self.X_IA_gb2_S2fe
+        self.X_IA_gb2_S2he
+        self.X_IA_gb2_S2G2
+        self.X_IA_gb2_S2F2
+        self.X_OV
+        self.X_kP1
+        self.X_kP2
+        self.X_kP3
+        t1 = time()
+        print(f"Minimal JIT warm-up completed in {t1-t0:.2f} seconds.")
+
+
+    def _moderate_warmup(self):
+        # Warms up k grid quantities, power spectrum generation, and some common functions (with window parameters)
+        print("Starting moderate JIT warm-up...")
+        t0 = time()
+        self.X_spt
+        self.X_lpt
+        self.X_sptG
+        self.X_IA_A
+        self.X_IA_B
+        self.X_IA_E
+        self.X_IA_DEE
+        self.X_IA_DBB
+        self.X_IA_deltaE1
+        self.X_IA_0E0E
+        self.X_IA_0B0B
+        self.X_IA_gb2_fe
+        self.X_IA_gb2_he
+        self.X_IA_tij_feG2
+        self.X_IA_tij_heG2
+        self.X_IA_tij_F2F2
+        self.X_IA_tij_G2G2
+        self.X_IA_tij_F2G2
+        self.X_IA_gb2_F2    
+        self.X_IA_gb2_G2
+        self.X_IA_gb2_S2F2
+        self.X_IA_gb2_S2fe
+        self.X_IA_gb2_S2he
+        self.X_IA_gb2_S2G2
+        self.X_IA_gb2_S2F2
+        self.X_OV
+        self.X_kP1
+        self.X_kP2
+        self.X_kP3
+
+        # Pk generation warm-up
+        _ = jit_jax_cosmo_pk_generator(0.012, 'Omega_c', {}, self.k_original) 
+        # Currently only empty and full dicts are compiled, any params dict that is not full will trigger recompilation
+        representative_pk_params_all = {
+            'Omega_c': 0.12, 
+            'Omega_b': 0.022,  
+            'h': 0.69,
+            'n_s': 0.96,
+            'sigma8': 0.8,
+            'Omega_k': 0.0, 
+            'w0': -1.0,
+            'wa': 0.0,
+        }
+        _ = jit_jax_cosmo_pk_generator(0.12, 'Omega_c', representative_pk_params_all, self.k_original)
+
+        dummy_P = jnp.ones_like(self.k_original)
+        window_settings = {"P_window": jnp.array([0.2, 0.2]), "C_window": 0.5}
+        
+        
+        # Warm up all the top-level API functions
+        api_functions = [
+            "one_loop_dd",
+            "IA_mix",  
+            "gI_tt", 
+            "kPol",
+            "OV"
+        ]
+        
+        # Warm up each function with each window setting
+        for func_name in api_functions:
+            func = getattr(self, func_name)
+            _ = func(dummy_P, **window_settings)
+
+        t1 = time()
+        print(f"Moderate JIT warm-up completed in {t1-t0:.2f} seconds.")
+
+
+    def _full_warmup(self):
+        # Warms up all k grid quantities, all functions, all window parameter combinations, and power spectrum generation
+        print("Starting full JIT warm-up...")
         t0 = time()
         # Prepare test inputs
         dummy_P = jnp.ones_like(self.k_original)
@@ -967,48 +1084,7 @@ from memory_profiler import profile
 @profile
 def create_jaxpt():
     k = jnp.logspace(-3, 1, 1000)
-    return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
+    return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)), warmup="minimal")
 
 if __name__ == "__main__":
-    # jpt = create_jaxpt() # << For memory profiler
-
-    k = jnp.logspace(-3, 1, 1000)
-    jpt = JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)))
-
-    def diff_p(param_value):
-        """Differentiation function for testing."""
-        pk_params = {
-            'Omega_c': 0.12,  # Cold dark matter density parameter
-            'Omega_b': 0.022,  # Baryon density parameter
-            'h': 0.69,         # Dimensionless Hubble constant
-            'sigma8': 0.8,    # Amplitude of matter fluctuations
-            'n_s': 0.96,      # Scalar spectral index
-            'Omega_k': 0.0,   # Curvature density parameter
-            'w0': -1.0,       # Dark energy equation of state parameter
-            'wa': 0.0,        # Dark energy equation of state parameter
-        }
-        pk_params['Omega_c'] = param_value
-        return jit_jax_cosmo_pk_generator(param_value, 'Omega_c', pk_params, jpt.k_original)
-    
-    pk_params = {
-        'Omega_c': 0.12,  # Cold dark matter density parameter
-        'Omega_b': 0.022,  # Baryon density parameter
-        'h': 0.69,         # Dimensionless Hubble constant
-        'sigma8': 0.8,    # Amplitude of matter fluctuations
-        'n_s': 0.96,      # Scalar spectral index
-        'Omega_k': 0.0,   # Curvature density parameter
-        'w0': -1.0,       # Dark energy equation of state parameter
-        'wa': 0.0,        # Dark energy equation of state parameter
-    }
-    t0 = time()
-    # tangent = jnp.ones_like(0.012, dtype=jnp.float64)
-    # primal_out, jvp_result = jvp(diff_p, (0.012,), (tangent,))
-    jit_jax_cosmo_pk_generator(0.12, 'Omega_c', pk_params, jpt.k_original)
-    t1 = time()
-    print(f"Pk differentiation time: {t1 - t0:.8f} seconds")
-
-
-    t0 = time()
-    jvp_result = jpt.diff(pk_method='jax-cosmo', pk_params=pk_params, pk_diff_param='Omega_c', function='IA_tt', diff_method='jvp')
-    t1 = time()
-    print(f"JVP total computation time: {t1 - t0:.4f} seconds")
+    create_jaxpt()
