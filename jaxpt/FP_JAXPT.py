@@ -93,7 +93,44 @@ def jax_cached_property(method):
 
 class JAXPT: 
     def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None, warmup=None):
+        """
+        Initialize a JAXPT instance for computing perturbation theory power spectra.
         
+        JAXPT provides JAX-accelerated FAST-PT computations. It supports automatic differentiation, JIT compilation,
+        and jax-differential power spectrum generation using jax-cosmo.
+        
+        Parameters
+        ----------
+        k : array_like
+            The input k-grid (wavenumbers) in 1/Mpc. Must be logarithmically spaced
+            with equal spacing in log(k) and contain an even number of elements.
+        low_extrap : float, optional
+            If provided, extrapolate the power spectrum to lower k values 
+            down to 10^(low_extrap). Helps with edge effects. Typical value: -5.
+        high_extrap : float, optional
+            If provided, extrapolate the power spectrum to higher k values 
+            up to 10^(high_extrap). Helps with edge effects. Typical value: 3.
+            Must be greater than low_extrap if both are provided.
+        n_pad : int, optional
+            Number of zeros to pad the array with on both ends. 
+            Helps reduce edge effects in FFT calculations. If None, defaults to
+            half the length of the input k array.   
+        warmup : str or None, optional
+            JIT compilation warmup strategy. Options:
+            - None or False: No warmup, functions compile on first call
+            - 'minimal': Precompute X matrices only (~100-200MB)
+            - 'moderate': X matrices + common functions (~300-400MB) 
+            - 'full': All functions and window combinations (~500-600MB)
+            
+        Notes
+        -----
+        The input k array must be strictly increasing, equally logarithmically spaced, and
+        contain an even number of elements.
+        
+        Using extrapolation (low_extrap/high_extrap) and padding (n_pad) is 
+        recommended to reduce numerical artifacts from the FFT-based algorithm.
+        """
+
         if (k is None or len(k) == 0):
             raise ValueError('You must provide an input k array.')        
         if not isinstance(k, jnp.ndarray):
@@ -505,8 +542,52 @@ class JAXPT:
     
 
     def diff(self, pk_method, pk_params, pk_diff_param, function=None, P_window=None, C_window=None,
-              diff_method='jacfwd', tangent=None):    
+            diff_method='jacfwd', tangent=None):
+        """
+        Compute derivatives of a FAST-PT functions with respect to one cosmological parameter.
         
+        This method enables automatic differentiation of any JAXPT function with respect to 
+        cosmological parameters by generating power spectra internally and computing derivatives
+        through the full calculation pipeline.
+        
+        Parameters
+        ----------
+        pk_method : str
+            Power spectrum generation method. Currently supports:
+            - 'jax-cosmo': Use jax-cosmo for linear matter power spectrum generation
+        pk_params : dict
+            Dictionary of cosmological parameters. Must contain the differentiation parameter
+            and any other parameters required by the power spectrum generator.
+        pk_diff_param : str
+            Name of the parameter to differentiate with respect to. Must be a key in pk_params.
+        function : str
+            Name of the JAXPT method to differentiate (e.g., 'one_loop_dd', 'IA_tt').
+        P_window : array_like, optional
+            Window parameters for tapering the power spectrum at the endpoints
+        C_window : float, optional
+            Window parameter for tapering the Fourier coefficients
+        diff_method : str, optional
+            Differentiation method. Options:
+            - 'jacfwd': Forward-mode automatic differentiation (default)
+            - 'jvp': Jacobian-vector product (requires tangent)
+            - 'vjp': Vector-Jacobian product (returns vjp function)
+        tangent : array_like, optional
+            Tangent vector for jvp/vjp methods. If None, uses ones array.
+            
+        Returns
+        -------
+        array_like or tuple
+            For 'jacfwd': Derivative array(s) with same shape as function output
+            For 'jvp': (jvp_result, primal_output) tuple
+            For 'vjp': (vjp_result, primal_output) tuple
+            
+        Notes
+        -----
+        This method internally generates power spectra using the specified pk_method and
+        computes derivatives through the entire perturbation theory calculation.
+        Memory usage depends on the function complexity and k array size.
+        """
+
         if function is None:
             raise ValueError("No function provided for differentiation. Please specify a function name.")
         if not isinstance(pk_params, dict):
@@ -546,6 +627,61 @@ class JAXPT:
     def multi_param_diff(self, pk_method, pk_params, pk_diff_params,
                     function=None, P_window=None, C_window=None, 
                     diff_method='jacfwd', output_indices=None):
+        """
+        Compute derivatives with respect to multiple cosmological parameters simultaneously.
+        
+        This method computes the Jacobian matrix of JAXPT functions with respect to multiple
+        cosmological parameters in a single call, which is more efficient than computing
+        individual derivatives separately.
+        
+        Parameters
+        ----------
+        pk_method : str
+            Power spectrum generation method. Currently supports:
+            - 'jax-cosmo': Use jax-cosmo for linear matter power spectrum generation
+        pk_params : dict
+            Dictionary of cosmological parameters. Must contain all differentiation parameters.
+        pk_diff_params : list of str
+            List of parameter names to differentiate with respect to. Each must be a key in pk_params.
+        function : str
+            Name of the JAXPT method to differentiate (e.g., 'one_loop_dd', 'IA_tt').
+        P_window : array_like, optional
+            Window parameters for tapering the power spectrum at the endpoints
+        C_window : float, optional
+            Window parameter for tapering the Fourier coefficients
+        diff_method : str, optional
+            Differentiation method. Options:
+            - 'jacfwd': Forward-mode automatic differentiation (default, recommended for few parameters)
+            - 'jacrev': Reverse-mode automatic differentiation (better for many parameters, high memory)
+        output_indices : int, list of int, or None, optional
+            Indices of function outputs to include in differentiation. If None, includes all outputs.
+            Useful for functions that return multiple arrays to provide a simpler output.
+            
+        Returns
+        -------
+        dict
+            Nested dictionary structure:
+            - Single output: {param_name: derivative_array, ...}
+            - Multiple outputs: {output_name: {param_name: derivative_array, ...}, ...}
+            
+            Each derivative_array has shape (n_k,) for scalar outputs or (n_k, n_params) for vector outputs.
+            
+        Raises
+        ------
+        UserWarning
+            If using jacrev with large k arrays (>1000 modes) due to potential memory issues.
+            
+        Notes
+        -----
+        Forward-mode differentiation (jacfwd) is generally more memory efficient and faster
+        for computing derivatives with respect to a few parameters. Reverse-mode (jacrev)
+        can be more efficient for many parameters but may require significant memory for
+        large k arrays.
+        
+        The output dictionary structure depends on whether the function returns single or
+        multiple arrays. Use output_indices to select specific outputs.
+        """
+
         if function is None:
             raise ValueError("No function provided for differentiation. Please specify a function name.")
         if not isinstance(pk_diff_params, list):
