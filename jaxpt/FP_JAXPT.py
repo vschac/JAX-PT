@@ -469,6 +469,13 @@ class JAXPT:
         if diff_method == 'jacfwd':
             jacobian = jacfwd(vector_diff_func)(param_values)
         elif diff_method == 'jacrev':
+            if len(self.k_original) > 1000:
+                import warnings
+                warnings.warn(
+                    f"Using jacrev with {len(self.k_original)} k-modes may consume significant memory. "
+                    f"Consider using jacfwd instead.", 
+                    UserWarning
+                )
             jacobian = jacrev(vector_diff_func)(param_values)
         else:
             raise ValueError(f"Unsupported differentiation method: {diff_method}. Use 'jacfwd' or 'jacrev'.")
