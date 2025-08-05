@@ -7,14 +7,11 @@ build-backend = "setuptools.build_meta"
 name = "jax-pt"
 dynamic = ["version"]
 requires-python = ">=3.10"
-description = "JAX-PT is a rewrite of the FAST-PT algorithm to be compatible with jax differentiation."
+description = "JAX-PT is a rewrite of the FAST-PT codebase to be compatible with jax differentiation."
 readme = "README.md"
 authors = [
-    { name = "Joseph E. McEwen" }, 
-    { name = "Xiao Fang" }, 
-    { name = "Jonathan Blazek" },
-    { email = "blazek@berkeley.edu" },
-    { name = "Vincent Schacknies" }
+    { name = "Vincent Schacknies" },
+    { email = "vincent.schacknies@icloud.com"}
     ]
 classifiers = [
     'Development Status :: 5 - Production/Stable',
@@ -27,12 +24,15 @@ classifiers = [
 keywords = [
     'FASTPT',
     'FAST-PT',
-    'Perturbation-Theory'
+    'Perturbation-Theory',
+    'JAXPT',
+    'JAX-PT'
 ]
 dependencies = [
     "numpy>=1.17",
     "scipy>=1.2",
-    "matplotlib>=3.0"
+    "matplotlib>=3.0",
+    "fast-pt>=4.0.0",
 ]
 
 [project.optional-dependencies]
