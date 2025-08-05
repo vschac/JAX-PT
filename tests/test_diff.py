@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 import jax.numpy as jnp
-from jaxpt import FP_JAXPT as JAXPT
+from jaxpt import JAXPT
 import os
 from fastpt import FASTPT, FPTHandler
 from jax import vjp

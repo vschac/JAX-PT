@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from jaxpt import FP_JAXPT as JAXPT
+from jaxpt import JAXPT
 import os
 from threshold import custom_close
 
@@ -60,10 +60,6 @@ def test_IA_ta(jpt):
     # assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_IA_ta_benchmark.txt'))
     assert custom_close(bmark, np.loadtxt('tests/benchmarking/P_IA_ta_benchmark.txt'), func_name="IA_ta")
 
-# def test_IA_der(jpt):
-#     bmark = np.transpose(jpt.IA_der(P))
-#     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_IA_der_benchmark.txt'))
-
 def test_IA_ct(jpt):
     bmark = np.transpose(jpt.IA_ct(P, C_window=C_window))
     # assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_IA_ct_benchmark.txt'))
@@ -81,32 +77,10 @@ def test_gI_tt(jpt):
     bmark = np.transpose(jpt.gI_tt(P, C_window=C_window))
     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_gI_tt_benchmark.txt'))
 
-# def test_OV(jpt):
-#     bmark = np.transpose(jpt.OV(P, C_window=C_window))
-#     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_OV_benchmark.txt'))
+def test_OV(jpt):
+    bmark = np.transpose(jpt.OV(P, C_window=C_window))
+    assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_OV_benchmark.txt'))
 
 def test_kPol(jpt):
     bmark = np.transpose(jpt.kPol(P, C_window=C_window))
     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_kPol_benchmark.txt'))
-
-# def test_RSD_components(jpt):
-#     bmark = np.transpose(jpt.RSD_components(P, 1.0, C_window=C_window))
-#     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_RSD_benchmark.txt'))
-
-# def test_RSD_ABsum_components(jpt):
-#     bmark = np.transpose(jpt.RSD_ABsum_components(P, 1.0, C_window=C_window))
-#     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_RSD_ABsum_components_benchmark.txt'))
-
-# def test_RSD_ABsum_mu(jpt):
-#     bmark = np.transpose(jpt.RSD_ABsum_mu(P, 1.0, 1.0, C_window=C_window))
-#     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_RSD_ABsum_mu_benchmark.txt'))
-
-# def test_IRres(jpt):
-#     bmark = np.transpose(jpt.IRres(P, C_window=C_window))
-#     old_bmark = np.loadtxt('tests/benchmarking/P_IRres_benchmark.txt')
-#     if not np.allclose(bmark, old_bmark):
-#         differences = np.where(np.abs(bmark - old_bmark) > 1e-6)
-#         print(f"Max difference: {np.max(np.abs(bmark - old_bmark))}")
-#         print(f"Relative difference: {np.max(np.abs(bmark - old_bmark) / np.abs(old_bmark))}")
-#         print("Differences found at indices:", differences)
-#     assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_IRres_benchmark.txt'))
