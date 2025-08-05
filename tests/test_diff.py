@@ -17,7 +17,7 @@ C_window = 0.75
 @pytest.fixture
 def jpt():
     n_pad = int(0.5 * len(k))
-    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad, warmup=False)
+    return JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=n_pad)
 
 PK_PARAMS_JAX_COSMO = {'Omega_c': 0.25, 'Omega_b': 0.05, 'h': 0.7, 'n_s': 0.96, 'sigma8': 0.8, 'k_pivot': 0.05}
 
@@ -328,7 +328,7 @@ def test_multi_param_diff_basic_jacrev(jpt):
     import warnings
     # Create a smaller JAXPT instance for memory-constrained jacrev testing
     k_small = jnp.logspace(-3, 1, 100)
-    jpt_small = JAXPT(k_small, low_extrap=-3, high_extrap=3, n_pad=50, warmup=False)
+    jpt_small = JAXPT(k_small, low_extrap=-3, high_extrap=3, n_pad=50)
     
     pk_params = PK_PARAMS_JAX_COSMO.copy()
     pk_diff_params = ['Omega_c', 'sigma8']
