@@ -1,3 +1,4 @@
 build/
 term_comparison_plots/
 *.png
+tests/plots/
