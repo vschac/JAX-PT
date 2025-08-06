@@ -1,3 +1,4 @@
 numpy>=1.17
 scipy>=1.2
 matplotlib>=3.0
+fast-pt>=4.0.0

@@ -7,12 +7,9 @@ jax_pt.egg-info/dependency_links.txt
 jax_pt.egg-info/requires.txt
 jax_pt.egg-info/top_level.txt
 jaxpt/FP_JAXPT.py
-jaxpt/JAXPT.py
 jaxpt/__init__.py
-jaxpt/info.py
+jaxpt/device_utils.py
 jaxpt/jax_utils.py
 tests/test_benchmarks.py
-tests/test_cache.py
-tests/test_fastpt.py
-tests/test_handler.py
-tests/test_jaxpt.py
+tests/test_diff.py
+tests/test_fp_jpt.py

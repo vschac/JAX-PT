@@ -20,6 +20,29 @@ from functools import partial
 from time import time
 
 
+def configure_jax_for_platform():
+    """Configure JAX for optimal performance on available hardware"""
+    try:
+        devices = jax.devices()
+        gpu_devices = [d for d in devices if d.device_kind.lower() in ['gpu', 'tpu']]
+        
+        if gpu_devices:
+            print(f"JAX-PT: Found {len(gpu_devices)} GPU/TPU device(s): {[str(d) for d in gpu_devices]}")
+            # GPU-specific optimizations
+            jax.config.update("jax_default_device", gpu_devices[0])
+            # Enable memory preallocation for GPUs
+            jax.config.update("jax_gpu_memory_fraction", 0.9)
+            return "gpu"
+        else:
+            print("JAX-PT: Using CPU backend")
+            return "cpu"
+            
+    except Exception as e:
+        print(f"JAX-PT: Platform detection failed ({e}), defaulting to CPU")
+        return "cpu"
+
+DEVICE_TYPE = configure_jax_for_platform()
+
 def process_x_term(X):
     """Process X term for JAX compatibility, preserving complex values and handling nested arrays."""
     processed_X = []
@@ -92,7 +115,7 @@ def jax_cached_property(method):
     return property(wrapper)
 
 class JAXPT: 
-    def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None, warmup=None):
+    def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None, warmup=None, device=None):
         """
         Initialize a JAXPT instance for computing perturbation theory power spectra.
         
@@ -121,6 +144,12 @@ class JAXPT:
             - 'minimal': Precompute X matrices only (~100-200MB)
             - 'moderate': X matrices + common functions (~300-400MB) 
             - 'full': All functions and window combinations (~500-600MB)
+        device : str or jax.Device, optional
+            Device to run computations on. Options:
+            - None: Auto-detect best device
+            - 'cpu': Force CPU execution
+            - 'gpu': Use first available GPU
+            - jax.Device object: Use specific device
             
         Notes
         -----
@@ -139,6 +168,8 @@ class JAXPT:
             except:
                 raise ValueError('Input k array must be a jax numpy array, automatic conversion failed.')
             
+        self.device = self._configure_device(device)
+        
         self.__k_original = k
         self.temp_fpt = FPT(k.copy(), low_extrap=low_extrap, high_extrap=high_extrap, n_pad=n_pad)
         self.extrap = False
@@ -804,6 +835,53 @@ class JAXPT:
             return jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, self.k_original)
         else:
             raise ValueError(f"Unsupported power spectrum generation method: {pk_method}")
+
+    def _configure_device(self, device):
+        """Configure compute device"""
+        if device is None:
+            # Auto-select best device
+            devices = jax.devices()
+            gpu_devices = [d for d in devices if d.device_kind.lower() == 'gpu']
+            return gpu_devices[0] if gpu_devices else jax.devices('cpu')[0]
+        elif isinstance(device, str):
+            if device.lower() == 'cpu':
+                return jax.devices('cpu')[0]
+            elif device.lower() == 'gpu':
+                gpu_devices = jax.devices('gpu') if jax.devices('gpu') else []
+                if not gpu_devices:
+                    print("Warning: GPU requested but not available, falling back to CPU")
+                    return jax.devices('cpu')[0]
+                return gpu_devices[0]
+            else:
+                raise ValueError(f"Unknown device string: {device}")
+        else:
+            # Assume it's a JAX device object
+            return device
+    
+    def get_device_info(self):
+        """Get information about the current compute device"""
+        return {
+            'device': str(self.device),
+            'device_kind': self.device.device_kind,
+            'platform': self.device.platform,
+            'memory_info': self._get_memory_info() if DEVICE_TYPE == 'gpu' else None,
+        }
+    
+    def _get_memory_info(self):
+        """Get GPU memory information if available"""
+        try:
+            if self.device.device_kind.lower() == 'gpu':
+                # This is CUDA-specific, might need adjustment for other GPU types
+                import subprocess
+                result = subprocess.run(['nvidia-smi', '--query-gpu=memory.used,memory.total', 
+                                       '--format=csv,nounits,noheader'], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    used, total = result.stdout.strip().split(',')
+                    return {'used_mb': int(used), 'total_mb': int(total)}
+        except:
+            pass
+        return None
 
 @partial(jit, static_argnames=["diff_param"])
 def jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, k_original):
