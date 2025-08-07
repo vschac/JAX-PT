@@ -1,6 +1,5 @@
 README.md
 pyproject.toml
-setup.py
 jax_pt.egg-info/PKG-INFO
 jax_pt.egg-info/SOURCES.txt
 jax_pt.egg-info/dependency_links.txt

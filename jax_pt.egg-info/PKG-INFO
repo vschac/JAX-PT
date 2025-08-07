@@ -1,24 +1,47 @@
 Metadata-Version: 2.4
 Name: jax-pt
 Version: 1.0.0
-Summary: JAX-PT is a rewrite of the FAST-PT codebase to be compatible with jax differentiation.
-Author: Vincent Schacknies
-Author-email: vincent.schacknies@icloud.com
-Project-URL: homepage, https://github.com/vschac/JAX-PT
-Keywords: FASTPT,FAST-PT,Perturbation-Theory,JAXPT,JAX-PT
-Classifier: Development Status :: 5 - Production/Stable
+Summary: JAX-accelerated FAST-PT for computing perturbation theory power spectra
+Author-email: Vincent Schacknies <vincent.schacknies@icloud.com>
+License: MIT
+Project-URL: Homepage, https://github.com/vschac/jax-pt
+Project-URL: Repository, https://github.com/vschac/jax-pt
+Project-URL: Documentation, https://github.com/vschac/JAX-PT/blob/main/README.md
+Project-URL: Bug Tracker, https://github.com/vschac/jax-pt/issues
+Keywords: cosmology,perturbation-theory,jax,gpu
+Classifier: Development Status :: 4 - Beta
 Classifier: Intended Audience :: Science/Research
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
 Classifier: Topic :: Scientific/Engineering :: Astronomy
-Classifier: Topic :: Scientific/Engineering :: Physics
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
-Requires-Dist: numpy>=1.17
-Requires-Dist: scipy>=1.2
-Requires-Dist: matplotlib>=3.0
+Requires-Dist: numpy>=1.21.0
+Requires-Dist: scipy>=1.7.0
 Requires-Dist: fast-pt>=4.0.0
-Dynamic: requires-python
+Requires-Dist: jax>=0.7.0
+Requires-Dist: jaxlib>=0.7.0
+Provides-Extra: gpu
+Requires-Dist: jax[cuda12_pip]>=0.4.0; extra == "gpu"
+Requires-Dist: jaxlib[cuda12_pip]>=0.4.0; extra == "gpu"
+Provides-Extra: gpu-cuda11
+Requires-Dist: jax[cuda11_pip]>=0.4.0; extra == "gpu-cuda11"
+Requires-Dist: jaxlib[cuda11_pip]>=0.4.0; extra == "gpu-cuda11"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: memory_profiler; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"
+Provides-Extra: all
+Requires-Dist: jax[cuda12_pip]>=0.4.0; extra == "all"
+Requires-Dist: jaxlib[cuda12_pip]>=0.4.0; extra == "all"
+Requires-Dist: jax-cosmo>=0.1.0; extra == "all"
+Requires-Dist: pytest; extra == "all"
+Requires-Dist: memory_profiler; extra == "all"
 
 # JAX-PT
 

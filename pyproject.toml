@@ -1,48 +1,61 @@
 [build-system]
-# Minimum requirements for the build system to execute.
-requires = ["setuptools", "wheel"]  # PEP 508 specifications.
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jax-pt"
-dynamic = ["version"]
-requires-python = ">=3.10"
-description = "JAX-PT is a rewrite of the FAST-PT codebase to be compatible with jax differentiation."
+version = "1.0.0"
+description = "JAX-accelerated FAST-PT for computing perturbation theory power spectra"
+authors = [{name = "Vincent Schacknies", email = "vincent.schacknies@icloud.com"}]
+license = {text = "MIT"}
 readme = "README.md"
-authors = [
-    { name = "Vincent Schacknies" },
-    { email = "vincent.schacknies@icloud.com"}
-    ]
+requires-python = ">=3.8"
+keywords = ["cosmology", "perturbation-theory", "jax", "gpu"]
 classifiers = [
-    'Development Status :: 5 - Production/Stable',
-    'Intended Audience :: Science/Research',
-    'License :: OSI Approved :: MIT License',
-    'Programming Language :: Python :: 3',
-    'Topic :: Scientific/Engineering :: Astronomy',
-    'Topic :: Scientific/Engineering :: Physics'
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
 ]
-keywords = [
-    'FASTPT',
-    'FAST-PT',
-    'Perturbation-Theory',
-    'JAXPT',
-    'JAX-PT'
-]
+
 dependencies = [
-    "numpy>=1.17",
-    "scipy>=1.2",
-    "matplotlib>=3.0",
+    "numpy>=1.21.0",
+    "scipy>=1.7.0",
     "fast-pt>=4.0.0",
+    "jax>=0.7.0",
+    "jaxlib>=0.7.0",
 ]
 
 [project.optional-dependencies]
+gpu = [
+    "jax[cuda12_pip]>=0.4.0",
+    "jaxlib[cuda12_pip]>=0.4.0",
+]
+gpu-cuda11 = [
+    "jax[cuda11_pip]>=0.4.0",
+    "jaxlib[cuda11_pip]>=0.4.0",
+]
+dev = ["pytest", "memory_profiler", "matplotlib"]
+all = [
+    "jax[cuda12_pip]>=0.4.0",
+    "jaxlib[cuda12_pip]>=0.4.0",
+    "jax-cosmo>=0.1.0",
+    "pytest",
+    "memory_profiler",
+]
 
 [project.urls]
-homepage = "https://github.com/vschac/JAX-PT"
+Homepage = "https://github.com/vschac/jax-pt"
+Repository = "https://github.com/vschac/jax-pt"
+Documentation = "https://github.com/vschac/JAX-PT/blob/main/README.md"
+"Bug Tracker" = "https://github.com/vschac/jax-pt/issues"
 
-# Explicitly define where package is (same directory as .toml).
-# Include matches full name of module how it would be imported in Python.
-# (Based on guide here: https://setuptools.pypa.io/en/latest/userguide/package_discovery.html)
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["jaxpt*"]
