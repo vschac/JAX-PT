@@ -20,13 +20,6 @@ def test_one_loop_dd(jpt):
     # assert np.allclose(bmark, np.loadtxt('tests/benchmarking/P_dd_benchmark.txt'))
     assert custom_close(bmark, np.loadtxt('tests/benchmarking/P_dd_benchmark.txt'), func_name="one_loop_dd")
 
-# def test_one_loop_dd_bias(jpt):
-#     bmark = list(jpt.one_loop_dd_bias(P, C_window=C_window))
-#     new_array = np.zeros(3000)
-#     new_array[0] = bmark[7]
-#     bmark[7] = new_array
-#     assert np.allclose(np.transpose(bmark), np.loadtxt('tests/benchmarking/P_bias_benchmark.txt'))
-
 def test_one_loop_dd_bias_b3nl(jpt):
     bmark = list(jpt.one_loop_dd_bias_b3nl(P, C_window=C_window))
     new_array = np.zeros(3000)

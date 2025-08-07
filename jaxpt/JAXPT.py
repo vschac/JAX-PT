@@ -326,7 +326,6 @@ class JAXPT:
         self.X_kP2
         self.X_kP3
 
-        # Pk generation warm-up
         _ = jit_jax_cosmo_pk_generator(0.012, 'Omega_c', {}, self.k_original) 
         # Currently only empty and full dicts are compiled, any params dict that is not full will trigger recompilation
         representative_pk_params_all = {
@@ -344,8 +343,6 @@ class JAXPT:
         dummy_P = jnp.ones_like(self.k_original)
         window_settings = {"P_window": jnp.array([0.2, 0.2]), "C_window": 0.5}
         
-        
-        # Warm up all the top-level API functions
         api_functions = [
             "one_loop_dd",
             "IA_mix",  
@@ -354,7 +351,6 @@ class JAXPT:
             "OV"
         ]
         
-        # Warm up each function with each window setting
         for func_name in api_functions:
             func = getattr(self, func_name)
             _ = func(dummy_P, **window_settings)
@@ -377,7 +373,6 @@ class JAXPT:
             {"P_window": jnp.array([0.2, 0.2]), "C_window": None}
         ]
         
-        # Warm up all the top-level API functions
         api_functions = [
             "one_loop_dd",
             "one_loop_dd_bias_b3nl", 
@@ -393,13 +388,11 @@ class JAXPT:
             "OV"
         ]
         
-        # Warm up each function with each window setting
         for func_name in api_functions:
             func = getattr(self, func_name)
             for settings in window_settings:
                 _ = func(dummy_P, **settings) 
 
-        # Pk generation warm-up
         _ = jit_jax_cosmo_pk_generator(0.012, 'Omega_c', {}, self.k_original) 
         # Currently only empty and full dicts are compiled, any params dict that is not full will trigger recompilation
         representative_pk_params_all = {
@@ -1044,8 +1037,6 @@ def _IA_ct_core(X_spt, X_sptG, X_IA_tij_feG2, X_IA_tij_heG2, X_IA_A, X_IA_tij_F2
     P_feG2, A = J_k_tensor(P, X_IA_tij_feG2, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)
     P_feG2 = _apply_extrapolation(P_feG2, EK=static_cfg.EK)
-    # P_A00E = compute_term(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
-    #                      P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
     P_A00E = J_k_tensor(P, X_IA_deltaE1, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)[0]
     P_A00E = _apply_extrapolation(P_A00E, EK=static_cfg.EK)
@@ -1056,8 +1047,6 @@ def _IA_ct_core(X_spt, X_sptG, X_IA_tij_feG2, X_IA_tij_heG2, X_IA_A, X_IA_tij_F2
     P_heG2, A = J_k_tensor(P, X_IA_tij_heG2, static_cfg, k_extrap, k_final, id_pad, l, m,
                            P_window=P_window, C_window=C_window)
     P_heG2 = _apply_extrapolation(P_heG2, EK=static_cfg.EK)
-    # P_A0E2 = compute_term(P, X_IA_A, static_cfg, k_extrap, k_final, id_pad, l, m,
-    #                      P_window=P_window, C_window=C_window, operation=lambda x: 2 * x)
     P_A0E2 = J_k_tensor(P, X_IA_A, static_cfg, k_extrap, k_final, id_pad, l, m,
                          P_window=P_window, C_window=C_window)[0]
     P_A0E2 = _apply_extrapolation(P_A0E2, EK=static_cfg.EK)
@@ -1295,40 +1284,3 @@ def convolution(c1, c2, g_m, g_n, h_l, two_part_l=None):
         C_l = C_l * h_l
 
     return C_l
-
-
-
-from memory_profiler import profile
-import gc
-import shutil
-import os
-def clear_jax_cache():
-    """Clear all JAX caches and force garbage collection"""
-    # Clear JAX compilation cache
-    jax.clear_caches()
-    
-    # Clear persistent cache directory if it exists
-    cache_dir = "/tmp/jax_cache"
-    if os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir)
-        os.makedirs(cache_dir, exist_ok=True)
-    
-    # Force garbage collection
-    gc.collect()
-    
-    print("JAX caches cleared")
-
-
-@profile
-def create_jaxpt():
-    k = jnp.logspace(-3, 1, 1000)
-    return JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)), warmup="full")
-
-if __name__ == "__main__":
-    clear_jax_cache()
-    # create_jaxpt()
-    k = jnp.logspace(-3, 1, 1000)
-    t0 = time()
-    JAXPT(k, low_extrap=-5, high_extrap=5, n_pad=int(0.5*len(k)), warmup="minimal")
-    t1 = time()
-    print(f"Time taken to create JAXPT: {t1 - t0:.2f} seconds")

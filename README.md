@@ -1,14 +1,6 @@
 # JAX-PT
 
-**Convert to a JAX REAdme**
-
-FAST-PT is a code to calculate quantities in cosmological perturbation theory
-at 1-loop (including, e.g., corrections to the matter power spectrum). The code
-utilizes Fourier methods combined with analytic expressions to reduce the
-computation time to scale as N log N, where N is the number of grid points in
-the input linear power spectrum.
-
-NOTE: v3.1.0 and earlier require numpy version < 1.24. This is fixed in v3.1.1 and later, which is available on pip and conda.
+JAX-PT is a rewrite of the [FAST-PT](https://github.com/jablazek/FAST-PT/) codebase to be compatible with JAX's autodifferentiation and JIT compilation tools. This tool can be integrated into full JAX data computation pipelines or used on its own. When compiled, the main Jax-PT (same as Fast-PT) functions can see a 5-100x speed increase on Fast-PT 4.0. (depending on the function) For more in depth examples on the features of functionality of Jax-PT, please see [examples](https://github.com/vschac/JAX-PT/tree/main/examples/jpt_example.py).
 
 
 ## Installation

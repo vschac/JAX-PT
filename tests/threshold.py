@@ -310,7 +310,7 @@ if __name__ == "__main__":
     # Initialize colorama for colored terminal output
     colorama.init(autoreset=True)
     
-    jpt = JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=int(0.5 * len(k)), warmup=True)
+    jpt = JAXPT(k, low_extrap=-5, high_extrap=3, n_pad=int(0.5 * len(k)), warmup="full")
     fpt = FASTPT(k, low_extrap=-5, high_extrap=3, n_pad=int(0.5 * len(k)))
     funcs = ["one_loop_dd", "one_loop_dd_bias_b3nl", "one_loop_dd_bias_lpt_NL", "IA_tt", "IA_mix", "IA_ta", "IA_ct", "gI_ct", "gI_ta", "gI_tt", "kPol", "OV"]
     
@@ -380,7 +380,7 @@ if __name__ == "__main__":
                         # Show what thresholds were used
                         if func in CUSTOM_THRESHOLDS:
                             thresholds = CUSTOM_THRESHOLDS[func]
-                            plot_comparison(func, f"Component {i}", result[i], r2[i])
+                            # plot_comparison(func, f"Component {i}", result[i], r2[i])
                             if "splits" in thresholds:
                                 # Multi-region thresholds
                                 print(f"      Used splits at k={thresholds['splits']}")
