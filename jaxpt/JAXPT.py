@@ -850,31 +850,6 @@ class JAXPT:
         else:
             # Assume it's a JAX device object
             return device
-    
-    def get_device_info(self):
-        """Get information about the current compute device"""
-        return {
-            'device': str(self.device),
-            'device_kind': self.device.device_kind,
-            'platform': self.device.platform,
-            'memory_info': self._get_memory_info() if DEVICE_TYPE == 'gpu' else None,
-        }
-    
-    def _get_memory_info(self):
-        """Get GPU memory information if available"""
-        try:
-            if self.device.device_kind.lower() == 'gpu':
-                # This is CUDA-specific, might need adjustment for other GPU types
-                import subprocess
-                result = subprocess.run(['nvidia-smi', '--query-gpu=memory.used,memory.total', 
-                                       '--format=csv,nounits,noheader'], 
-                                      capture_output=True, text=True)
-                if result.returncode == 0:
-                    used, total = result.stdout.strip().split(',')
-                    return {'used_mb': int(used), 'total_mb': int(total)}
-        except:
-            pass
-        return None
 
 @partial(jit, static_argnames=["diff_param"])
 def jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, k_original):
