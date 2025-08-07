@@ -2,3 +2,7 @@ build/
 term_comparison_plots/
 *.png
 tests/plots/
+*.egg-info/
+.DS_Store
+__pycache__/
+.pytest_cache/
