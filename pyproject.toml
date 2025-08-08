@@ -25,29 +25,28 @@ classifiers = [
 ]
 
 dependencies = [
-    "numpy>=1.21.0",
-    "scipy>=1.7.0",
     "fast-pt>=4.0.0",
     "jax>=0.7.0",
     "jaxlib>=0.7.0",
+    "jax-cosmo>=0.1.0",
 ]
 
 [project.optional-dependencies]
 gpu = [
-    "jax[cuda12_pip]>=0.4.0",
-    "jaxlib[cuda12_pip]>=0.4.0",
+    "jax[cuda12_pip]>=0.7.0",
+    "jaxlib[cuda12_pip]>=0.7.0",
 ]
 gpu-cuda11 = [
-    "jax[cuda11_pip]>=0.4.0",
-    "jaxlib[cuda11_pip]>=0.4.0",
+    "jax[cuda11_pip]>=0.7.0", 
+    "jaxlib[cuda11_pip]>=0.7.0",
 ]
 dev = ["pytest", "memory_profiler", "matplotlib"]
 all = [
-    "jax[cuda12_pip]>=0.4.0",
-    "jaxlib[cuda12_pip]>=0.4.0",
-    "jax-cosmo>=0.1.0",
-    "pytest",
+    "jax[cuda12_pip]>=0.7.0",
+    "jaxlib[cuda12_pip]>=0.7.0",
+    "pytest", 
     "memory_profiler",
+    "matplotlib",
 ]
 
 [project.urls]
