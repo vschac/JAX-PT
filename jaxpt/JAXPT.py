@@ -18,27 +18,76 @@ from dataclasses import dataclass
 from typing import Optional, Any
 from functools import partial
 from time import time
-
+import warnings
 
 def configure_jax_for_platform():
-    """Configure JAX for optimal performance on available hardware"""
+    """Configure JAX for optimal performance on available hardware, with safe fallbacks."""
     try:
-        devices = jax.devices()
-        gpu_devices = [d for d in devices if d.device_kind.lower() in ['gpu', 'tpu']]
-        
-        if gpu_devices:
-            print(f"JAX-PT: Found {len(gpu_devices)} GPU/TPU device(s): {[str(d) for d in gpu_devices]}")
-            # GPU-specific optimizations
-            jax.config.update("jax_default_device", gpu_devices[0])
-            # Enable memory preallocation for GPUs
-            jax.config.update("jax_gpu_memory_fraction", 0.9)
-            return "gpu"
-        else:
-            print("JAX-PT: Using CPU backend")
-            return "cpu"
-            
+        from jax.lib import xla_bridge
+        backend = xla_bridge.get_backend().platform  # 'cpu', 'gpu', or 'tpu'
+
+        # Detect whether jaxlib is GPU-enabled
+        try:
+            from jaxlib import version as jaxlib_version
+            cuda_version = getattr(jaxlib_version, "__cuda_version__", None)
+            rocm_version = getattr(jaxlib_version, "__rocm_version__", None)
+        except Exception:
+            cuda_version = rocm_version = None
+
+        if backend == "gpu":
+            if cuda_version is None and rocm_version is None:
+                warnings.warn(
+                    "JAX backend reports GPU, but jaxlib is not a CUDA/ROCm build. "
+                    "Falling back to CPU. Install jax[cudaXX_pip] and jaxlib[cudaXX_pip] "
+                    "that match your driver/toolkit.",
+                    RuntimeWarning,
+                )
+                print("JAX-PT: Using CPU backend")
+                return "cpu"
+
+            try:
+                gpu_devices = jax.devices("gpu")
+                if not gpu_devices:
+                    warnings.warn(
+                        "No GPU devices are visible to JAX; falling back to CPU.",
+                        RuntimeWarning,
+                    )
+                    print("JAX-PT: Using CPU backend")
+                    return "cpu"
+
+                print(f"JAX-PT: Found {len(gpu_devices)} GPU device(s): {[str(d) for d in gpu_devices]}")
+                # Prefer not to hard-fail if these config keys are unavailable
+                try:
+                    jax.config.update("jax_default_device", gpu_devices[0])
+                except Exception as e:
+                    warnings.warn(
+                        f"Could not set jax_default_device automatically ({e}). "
+                        "You can select a device using `with jax.default_device(device):` or by setting "
+                        "the environment variable JAX_PLATFORM_NAME=cpu/gpu before import.",
+                        RuntimeWarning,
+                    )
+                if "XLA_PYTHON_CLIENT_MEM_FRACTION" not in os.environ:
+                    warnings.warn(
+                        "GPU memory fraction not configurable via jax.config in this build. "
+                        "Consider increasing environment variable XLA_PYTHON_CLIENT_MEM_FRACTION to greater than 0.75 before importing JAX "
+                        "to allow for more GPU memory allocation.",
+                        RuntimeWarning,
+                    )
+                return "gpu"
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to select GPU device ({e}); falling back to CPU.",
+                    RuntimeWarning,
+                )
+                print("JAX-PT: Using CPU backend")
+                return "cpu"
+
+        # Non-GPU backends
+        print("JAX-PT: Using CPU backend" if backend == "cpu" else f"JAX-PT: Using {backend.upper()} backend")
+        return backend
     except Exception as e:
-        print(f"JAX-PT: Platform detection failed ({e}), defaulting to CPU")
+        warnings.warn(f"Platform detection failed ({e}); defaulting to CPU.", RuntimeWarning)
+        print("JAX-PT: Using CPU backend")
         return "cpu"
 
 DEVICE_TYPE = configure_jax_for_platform()
@@ -840,10 +889,12 @@ class JAXPT:
             if device.lower() == 'cpu':
                 return jax.devices('cpu')[0]
             elif device.lower() == 'gpu':
-                gpu_devices = jax.devices('gpu') if jax.devices('gpu') else []
+                gpu_devices = jax.devices('gpu')
                 if not gpu_devices:
-                    print("Warning: GPU requested but not available, falling back to CPU")
-                    return jax.devices('cpu')[0]
+                    raise RuntimeError(
+                        "GPU requested but no GPU backend is available. "
+                        "Install GPU-enabled JAX matching your CUDA or ROCm installation."
+                    )
                 return gpu_devices[0]
             else:
                 raise ValueError(f"Unknown device string: {device}")

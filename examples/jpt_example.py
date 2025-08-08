@@ -33,9 +33,9 @@ def main():
     window_params = {"P_window": jnp.array([0.2, 0.2]), "C_window": 0.5}
     
     # ================================================================
-    # 1. BASIC INTRINSIC ALIGNMENT CALCULATION
+    # 1. BASIC SAMPLE CALCULATION (INTRINSIC ALIGNMENT)
     # ================================================================
-    print(f"\n1. INTRINSIC ALIGNMENT CALCULATION")
+    print(f"\n1. SAMPLE CALCULATION (INTRINSIC ALIGNMENT)")
     print("-" * 40)
     
     t0 = time.time()
