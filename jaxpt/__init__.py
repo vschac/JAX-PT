@@ -1,5 +1,12 @@
-from .JAXPT import JAXPT, DEVICE_TYPE
-from .device_utils import device_info
+"""
+JAX-PT: JAX-accelerated FAST-PT for computing perturbation theory power spectra
+"""
 
-__all__ = ['JAXPT', 'device_info']
-__version__ = '1.0.0'
+from .JAXPT import JAXPT
+from . import device_utils
+
+__version__ = "1.0.0"
+__author__ = "Vincent Schacknies"
+__email__ = "vincent.schacknies@icloud.com"
+
+__all__ = ["JAXPT", "device_utils"]
