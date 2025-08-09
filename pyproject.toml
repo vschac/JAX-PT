@@ -10,7 +10,7 @@ authors = [{name = "Vincent Schacknies", email = "vincent.schacknies@icloud.com"
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.8"
-keywords = ["cosmology", "perturbation-theory", "jax", "gpu"]
+keywords = ["cosmology", "perturbation-theory", "jax", "gpu", "astrophysics", "fastpt"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -22,31 +22,36 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 
 dependencies = [
     "fast-pt>=4.0.0",
-    "jax>=0.7.0",
-    "jaxlib>=0.7.0",
+    "jax>=0.4.16",
+    "jaxlib>=0.4.16", 
     "jax-cosmo>=0.1.0",
+    "setuptools",
+    "numpy>=1.17",
+    "scipy>=1.2",
 ]
 
 [project.optional-dependencies]
 gpu = [
-    "jax[cuda12_pip]>=0.7.0",
-    "jaxlib[cuda12_pip]>=0.7.0",
+    "jax[cuda12_pip]>=0.4.16",
+    "jaxlib[cuda12_pip]>=0.4.16",
 ]
 gpu-cuda11 = [
-    "jax[cuda11_pip]>=0.7.0", 
-    "jaxlib[cuda11_pip]>=0.7.0",
+    "jax[cuda11_pip]>=0.4.16", 
+    "jaxlib[cuda11_pip]>=0.4.16",
 ]
-dev = ["pytest", "memory_profiler", "matplotlib"]
+dev = ["pytest", "memory_profiler", "matplotlib", "colorama", "build", "twine"]
 all = [
-    "jax[cuda12_pip]>=0.7.0",
-    "jaxlib[cuda12_pip]>=0.7.0",
+    "jax[cuda12_pip]>=0.4.16",
+    "jaxlib[cuda12_pip]>=0.4.16",
     "pytest", 
     "memory_profiler",
     "matplotlib",
+    "colorama",
 ]
 
 [project.urls]
@@ -58,3 +63,4 @@ Documentation = "https://github.com/vschac/JAX-PT/blob/main/README.md"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["jaxpt*"]
+exclude = ["tests*", "examples*", "docs*"]

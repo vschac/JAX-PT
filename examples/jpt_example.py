@@ -27,7 +27,6 @@ def main():
     # Initialize JAX-PT with moderate warmup for better performance
     print("\nInitializing JAX-PT...")
     jpt = JAXPT(k, low_extrap=-5, high_extrap=3, warmup="moderate")
-    print(f"Device: {jpt.get_device_info()['device']}")
 
     # Window parameters for numerical stability
     window_params = {"P_window": jnp.array([0.2, 0.2]), "C_window": 0.5}

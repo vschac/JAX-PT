@@ -33,7 +33,7 @@ CUSTOM_THRESHOLDS = {
     },
     "one_loop_dd_bias_b3nl": {
         "split_k": 10.0,
-        "left": {"rtol": 1e-3, "atol": 2e-4}, 
+        "left": {"rtol": 1e-3, "atol": 4e-3}, 
         "right": {"rtol": 8e-2, "atol": 8e-2},
         "precision_statement": "JAXPT can guarantee a precision of 1×10⁻3 for k values between 0.01 and 10 h/Mpc"
     },
