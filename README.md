@@ -17,77 +17,44 @@ the input linear power spectrum.
 
 ## Installation
 
-### CPU-only Installation (Default)
+### Default Installation
 ```bash
 pip install jax-pt
 ```
 
-### GPU Installation (Recommended for large computations)
-
-#### NVIDIA GPU with CUDA 12:
+#### Dev Installation:
 ```bash
-pip install jax-pt[gpu]
-```
-
-#### NVIDIA GPU with CUDA 11:
-```bash  
-pip install jax-pt[gpu-cuda11]
-```
-
-#### Full Installation (GPU + Dev):
-```bash
-pip install jax-pt[all]
-```
-
-### Apple Silicon (M1/M2/M3):
-```bash
-pip install jax-pt
-# Note: GPU acceleration not yet supported on Apple Silicon
+pip install jax-pt[dev]
 ```
 
 ## GPU Usage
 
-JAX-PT automatically detects and uses GPU when available:
+JAX-PT allows for you to specify a device to run your computations on. During init pass 'cpu', 'gpu', or any other jax.Device to the device kwarg:
 
 ```python
 import jax
+import jax.numpy as jnp
 from jaxpt import JAXPT
 
 # Check available devices
 print("Available devices:", jax.devices())
 
-# Create JAXPT instance (auto-detects GPU)
 k = jnp.logspace(-3, 1, 1000)
+
+# Create JAXPT instance (defaults to CPU)
 jpt = JAXPT(k, warmup="moderate")
 
-# Check device info
-print(jpt.get_device_info())
+# Specify to use GPU
+jpt = JAXPT(k, warmup="moderate", device="gpu")
+
+# Add a different jax Device
+devices = jax.devices()
+jpt = JAXPT(k, warmup="moderate", device=devices[0]) # or any index from devices list
 ```
 
-### Manual Device Selection
+Please remember to install the correct jax CUDA libraries for your CUDA version.
+For example:
 
-```python
-# Force CPU usage
-jpt = JAXPT(k, device='cpu')
-
-# Force GPU usage (if available)
-jpt = JAXPT(k, device='gpu')
-
-# Use specific device
-device = jax.devices('gpu')[0]
-jpt = JAXPT(k, device=device)
-```
-
-### Memory Management
-
-For large computations on GPU:
-
-```python
-# Monitor memory usage
-info = jpt.get_device_info()
-if info['memory_info']:
-    print(f"GPU Memory: {info['memory_info']['used_mb']}/{info['memory_info']['total_mb']} MB")
-
-# Clear caches if needed
-jax.clear_caches()
+```bash
+pip install jax[cuda12]
 ```

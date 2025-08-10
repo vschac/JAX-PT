@@ -11,6 +11,7 @@ jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 # jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
+
 import os
 import functools
 from jax.numpy.fft import ifft, irfft
@@ -20,77 +21,6 @@ from functools import partial
 from time import time
 import warnings
 
-def configure_jax_for_platform():
-    """Configure JAX for optimal performance on available hardware, with safe fallbacks."""
-    try:
-        from jax.lib import xla_bridge
-        backend = xla_bridge.get_backend().platform  # 'cpu', 'gpu', or 'tpu'
-
-        # Detect whether jaxlib is GPU-enabled
-        try:
-            from jaxlib import version as jaxlib_version
-            cuda_version = getattr(jaxlib_version, "__cuda_version__", None)
-            rocm_version = getattr(jaxlib_version, "__rocm_version__", None)
-        except Exception:
-            cuda_version = rocm_version = None
-
-        if backend == "gpu":
-            if cuda_version is None and rocm_version is None:
-                warnings.warn(
-                    "JAX backend reports GPU, but jaxlib is not a CUDA/ROCm build. "
-                    "Falling back to CPU. Install jax[cudaXX_pip] and jaxlib[cudaXX_pip] "
-                    "that match your driver/toolkit.",
-                    RuntimeWarning,
-                )
-                print("JAX-PT: Using CPU backend")
-                return "cpu"
-
-            try:
-                gpu_devices = jax.devices("gpu")
-                if not gpu_devices:
-                    warnings.warn(
-                        "No GPU devices are visible to JAX; falling back to CPU.",
-                        RuntimeWarning,
-                    )
-                    print("JAX-PT: Using CPU backend")
-                    return "cpu"
-
-                print(f"JAX-PT: Found {len(gpu_devices)} GPU device(s): {[str(d) for d in gpu_devices]}")
-                # Prefer not to hard-fail if these config keys are unavailable
-                try:
-                    jax.config.update("jax_default_device", gpu_devices[0])
-                except Exception as e:
-                    warnings.warn(
-                        f"Could not set jax_default_device automatically ({e}). "
-                        "You can select a device using `with jax.default_device(device):` or by setting "
-                        "the environment variable JAX_PLATFORM_NAME=cpu/gpu before import.",
-                        RuntimeWarning,
-                    )
-                if "XLA_PYTHON_CLIENT_MEM_FRACTION" not in os.environ:
-                    warnings.warn(
-                        "GPU memory fraction not configurable via jax.config in this build. "
-                        "Consider increasing environment variable XLA_PYTHON_CLIENT_MEM_FRACTION to greater than 0.75 before importing JAX "
-                        "to allow for more GPU memory allocation.",
-                        RuntimeWarning,
-                    )
-                return "gpu"
-            except Exception as e:
-                warnings.warn(
-                    f"Failed to select GPU device ({e}); falling back to CPU.",
-                    RuntimeWarning,
-                )
-                print("JAX-PT: Using CPU backend")
-                return "cpu"
-
-        # Non-GPU backends
-        print("JAX-PT: Using CPU backend" if backend == "cpu" else f"JAX-PT: Using {backend.upper()} backend")
-        return backend
-    except Exception as e:
-        warnings.warn(f"Platform detection failed ({e}); defaulting to CPU.", RuntimeWarning)
-        print("JAX-PT: Using CPU backend")
-        return "cpu"
-
-DEVICE_TYPE = configure_jax_for_platform()
 
 def process_x_term(X):
     """Process X term for JAX compatibility, preserving complex values and handling nested arrays."""
@@ -163,7 +93,7 @@ def jax_cached_property(method):
         return getattr(self, prop_name)
     return property(wrapper)
 
-class JAXPT: 
+class JAXPT:
     def __init__(self, k, low_extrap=None, high_extrap=None, n_pad=None, warmup=None, device=None):
         """
         Initialize a JAXPT instance for computing perturbation theory power spectra.
@@ -217,7 +147,19 @@ class JAXPT:
             except:
                 raise ValueError('Input k array must be a jax numpy array, automatic conversion failed.')
             
-        self.device = self._configure_device(device)
+        if device is not None:
+            if isinstance(device, str):
+                device = device.lower()
+                if device == 'cpu':
+                    jax.config.update('jax_platform_name', 'cpu')
+                elif device == 'gpu':
+                    jax.config.update('jax_platform_name', 'gpu')
+                else:
+                    raise ValueError(f"Unknown device string: {device}. Use 'cpu', 'gpu', or a jax.Device object.")
+            elif isinstance(device, jax.lib.xla_client.Device):
+                jax.config.update('jax_platform_name', device.platform)
+            else:
+                raise ValueError("Device must be None, a string ('cpu' or 'gpu'), or a jax.Device object.")
         
         self.__k_original = k
         self.temp_fpt = FPT(k.copy(), low_extrap=low_extrap, high_extrap=high_extrap, n_pad=n_pad)
@@ -877,30 +819,6 @@ class JAXPT:
             return jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, self.k_original)
         else:
             raise ValueError(f"Unsupported power spectrum generation method: {pk_method}")
-
-    def _configure_device(self, device):
-        """Configure compute device"""
-        if device is None:
-            # Auto-select best device
-            devices = jax.devices()
-            gpu_devices = [d for d in devices if d.device_kind.lower() == 'gpu']
-            return gpu_devices[0] if gpu_devices else jax.devices('cpu')[0]
-        elif isinstance(device, str):
-            if device.lower() == 'cpu':
-                return jax.devices('cpu')[0]
-            elif device.lower() == 'gpu':
-                gpu_devices = jax.devices('gpu')
-                if not gpu_devices:
-                    raise RuntimeError(
-                        "GPU requested but no GPU backend is available. "
-                        "Install GPU-enabled JAX matching your CUDA or ROCm installation."
-                    )
-                return gpu_devices[0]
-            else:
-                raise ValueError(f"Unknown device string: {device}")
-        else:
-            # Assume it's a JAX device object
-            return device
 
 @partial(jit, static_argnames=["diff_param"])
 def jit_jax_cosmo_pk_generator(param_value, diff_param, P_params, k_original):

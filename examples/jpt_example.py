@@ -5,11 +5,11 @@ This example demonstrates the key JAX-PT functionalities:
 3. Multi-parameter differentiation with timing
 """
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import time
 from jaxpt import JAXPT
-from jaxpt.device_utils import device_info
 
 data = np.loadtxt('Pk_test.dat')
 P_linear = jnp.array(data[:, 1])
@@ -22,7 +22,7 @@ def main():
     
     # Show device information
     print("\nDevice Information:")
-    device_info()
+    print(jax.devices())
 
     # Initialize JAX-PT with moderate warmup for better performance
     print("\nInitializing JAX-PT...")

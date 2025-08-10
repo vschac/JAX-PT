@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jax-pt"
-version = "1.0.0"
+version = "1.0.1"
 description = "JAX-accelerated FAST-PT for computing perturbation theory power spectra"
 authors = [{name = "Vincent Schacknies", email = "vincent.schacknies@icloud.com"}]
 license = {text = "MIT"}
@@ -36,23 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpu = [
-    "jax[cuda12_pip]>=0.4.16",
-    "jaxlib[cuda12_pip]>=0.4.16",
-]
-gpu-cuda11 = [
-    "jax[cuda11_pip]>=0.4.16", 
-    "jaxlib[cuda11_pip]>=0.4.16",
-]
 dev = ["pytest", "memory_profiler", "matplotlib", "colorama", "build", "twine"]
-all = [
-    "jax[cuda12_pip]>=0.4.16",
-    "jaxlib[cuda12_pip]>=0.4.16",
-    "pytest", 
-    "memory_profiler",
-    "matplotlib",
-    "colorama",
-]
 
 [project.urls]
 Homepage = "https://github.com/vschac/jax-pt"
