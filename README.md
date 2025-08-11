@@ -58,3 +58,5 @@ For example:
 ```bash
 pip install jax[cuda12]
 ```
+
+Note: Jax currently only supports GPU acceleration for Linux systems, please see the [Jax documentation](https://docs.jax.dev/en/latest/installation.html#installation) for the latest updates. 
